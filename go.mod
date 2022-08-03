@@ -10,6 +10,7 @@ require (
 
 require (
 	github.com/DataDog/zstd v1.4.5 // indirect
+	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/VictoriaMetrics/metrics v1.18.1 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
@@ -29,6 +30,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.0 // indirect
 	github.com/hashicorp/memberlist v0.3.1 // indirect
+	github.com/iceber/iouring-go v0.0.0-20220609112130-b1dc8dd9fbfd // indirect
 	github.com/klauspost/compress v1.11.7 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -47,3 +49,6 @@ require (
 )
 
 // replace github.com/lni/dragonboat/v4 => /Users/rain/goprojs/src/github.com/blacktear23/dragonboat
+replace github.com/blacktear23/bolt => /Users/rain/goprojs/src/github.com/blacktear23/bolt
+
+replace github.com/cockroachdb/pebble => /Users/rain/goprojs/src/github.com/blacktear23/pebble

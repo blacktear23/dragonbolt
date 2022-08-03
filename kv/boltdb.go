@@ -104,7 +104,6 @@ func (d *DiskKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	if d.closed {
 		panic("update called after Close()")
 	}
-	log.Println("[B] Update")
 	err := d.db.Update(func(txn *bolt.Tx) error {
 		bucket := txn.Bucket(d.bucketName)
 		if bucket == nil {
@@ -112,11 +111,9 @@ func (d *DiskKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 		}
 		for idx, e := range ents {
 			mutation := &Mutation{}
-			log.Println("[B] unmarshal mutation")
 			if err := json.Unmarshal(e.Cmd, mutation); err != nil {
 				panic(err)
 			}
-			log.Println("[F] unmarshal mutation")
 			result, perr := d.processMutation(bucket, mutation)
 			if perr != nil {
 				return perr
@@ -136,7 +133,6 @@ func (d *DiskKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	}
 	d.lastApplied = ents[len(ents)-1].Index
 	// log.Println("[I] End Update")
-	log.Println("[F] Update")
 	return ents, nil
 }
 
