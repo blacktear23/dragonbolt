@@ -16,7 +16,9 @@ const (
 )
 
 var (
-	ErrBucketNotExists = errors.New("Bucket not exists")
+	ErrBucketNotExists       = errors.New("Bucket not exists")
+	ErrInvalidQuery          = errors.New("Invalid Query")
+	ErrUnkonwnQueryOperation = errors.New("Unknown query operation")
 )
 
 type DiskKVBuilder struct {

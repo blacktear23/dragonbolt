@@ -82,12 +82,81 @@ func (d *DiskKV) Open(stopc <-chan struct{}) (uint64, error) {
 }
 
 // Lookup queries the state machine.
-func (d *DiskKV) Lookup(key interface{}) (interface{}, error) {
-	v, err := d.GetKey(key.([]byte))
+func (d *DiskKV) Lookup(q interface{}) (interface{}, error) {
+	query, ok := q.(*Query)
+	if !ok {
+		return nil, ErrInvalidQuery
+	}
+	switch query.Op {
+	case GET, GET_VALUE:
+		return d.processGet(query)
+	case SCAN, SCAN_KEY, SCAN_VALUE:
+		return d.processScan(query)
+	}
+	return nil, ErrUnkonwnQueryOperation
+}
+
+func (d *DiskKV) processGet(query *Query) (*QueryResult, error) {
+	v, err := d.GetKey(query.Key)
 	if err == nil && d.closed {
 		panic("lookup returned valid result when DiskKV is already closed")
 	}
-	return v, err
+	if v == nil {
+		return &QueryResult{}, err
+	}
+	return &QueryResult{
+		KVS: []KVPair{
+			buildKVP(query.Key, v, query.Op),
+		},
+	}, err
+}
+
+func (d *DiskKV) processScan(query *Query) (*QueryResult, error) {
+	// Scan for [Start, End)
+	ret := &QueryResult{}
+
+	err := d.db.View(func(txn *bolt.Tx) error {
+		bucket := txn.Bucket(d.bucketName)
+		if bucket == nil {
+			return ErrBucketNotExists
+		}
+		c := bucket.Cursor()
+		// Check for first result
+		k, v := c.Seek(query.Start)
+		if k == nil {
+			// Nothing
+			return nil
+		} else if keyCompare(k, query.End) >= 0 {
+			// Next greater or equals than end key just return nothing
+			return nil
+		}
+		ret.KVS = append(ret.KVS, buildKVP(k, v, query.Op))
+
+		// Check for rest results
+		for i := 1; i < query.Limit; i++ {
+			k, v = c.Next()
+			if k == nil {
+				// Nothing
+				return nil
+			} else if keyCompare(k, query.End) >= 0 {
+				// Next greater or equals than end key just return nothing
+				return nil
+			}
+			ret.KVS = append(ret.KVS, buildKVP(k, v, query.Op))
+		}
+		return nil
+	})
+	if err == nil && d.closed {
+		panic("lookup returned valid result when DiskKV is already closed")
+	}
+	return ret, err
+}
+
+func keyCompare(val1 []byte, val2 []byte) int {
+	if val2 == nil {
+		return -1
+	}
+	return bytes.Compare(val1, val2)
 }
 
 // Update updates the state machine. In this example, all updates are put into

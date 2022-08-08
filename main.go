@@ -16,6 +16,7 @@ import (
 	"github.com/blacktear23/bolt"
 	"github.com/blacktear23/dragonbolt/kv"
 	"github.com/blacktear23/dragonbolt/server"
+	"github.com/blacktear23/dragonbolt/tso"
 	"github.com/lni/dragonboat/v4"
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/logger"
@@ -33,6 +34,7 @@ var (
 
 const (
 	exampleShardID uint64 = 128
+	tsoShardID     uint64 = 0xFFFFFFFFFFFFFF01
 )
 
 type RequestType uint64
@@ -203,9 +205,14 @@ func main() {
 		}
 	})
 
+	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbFile, initMembers)
+	if err != nil {
+		log.Println("Start TSO Server error", err)
+	}
+
 	var rs *server.RedisServer = nil
 	if redisAddr != "" {
-		rs := server.NewRedisServer(redisAddr, nh, exampleShardID)
+		rs := server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer)
 		rs.Run()
 		log.Println("Start Redis Server for", redisAddr)
 	}

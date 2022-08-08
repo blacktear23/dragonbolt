@@ -184,6 +184,12 @@ func NewNumber(num int64) *Number {
 	}
 }
 
+func NewNumberUint(num uint64) *Number {
+	return &Number{
+		data: int64(num),
+	}
+}
+
 func (n *Number) GetNumber() int64 {
 	return n.data
 }
