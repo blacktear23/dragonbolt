@@ -95,17 +95,11 @@ type memdbIter struct {
 }
 
 func (i *memdbIter) Seek(key []byte) ([]byte, []byte) {
-	for {
-		if !i.iter.Valid() {
-			return nil, nil
-		}
-		if bytes.Compare(i.iter.Key(), key) >= 0 {
-			break
-		} else {
-			i.iter.Next()
-		}
+	i.iter = i.db.view.LowerBound(key)
+	if i.iter.Valid() {
+		return i.iter.Key(), i.iter.Value()
 	}
-	return i.iter.Key(), i.iter.Value()
+	return nil, nil
 }
 
 func (i *memdbIter) Next() ([]byte, []byte) {
