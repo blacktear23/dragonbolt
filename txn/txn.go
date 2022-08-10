@@ -28,7 +28,7 @@ type KVOperation interface {
 
 type Cursor interface {
 	Seek(key []byte) error
-	Next() (key []byte, value []byte, err error)
+	Next() ([]byte, []byte, error)
 }
 
 type Txn interface {

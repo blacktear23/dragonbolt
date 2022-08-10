@@ -1,8 +1,10 @@
 package txn
 
 import (
+	"bytes"
+
 	"github.com/blacktear23/dragonbolt/kv"
-	omap "github.com/wk8/go-ordered-map/v2"
+	"github.com/igrmk/treemap/v2"
 )
 
 type Iter interface {
@@ -12,14 +14,16 @@ type Iter interface {
 
 type MemDB struct {
 	muts []kv.Mutation
-	view *omap.OrderedMap[string, []byte]
+	view *treemap.TreeMap[[]byte, []byte]
 	dels map[string]bool
 }
 
 func NewMemDB() *MemDB {
 	return &MemDB{
 		muts: []kv.Mutation{},
-		view: omap.New[string, []byte](),
+		view: treemap.NewWithKeyCompare[[]byte, []byte](func(a []byte, b []byte) bool {
+			return bytes.Compare(a, b) < 0
+		}),
 		dels: make(map[string]bool),
 	}
 }
@@ -30,13 +34,15 @@ func (db *MemDB) Get(key []byte) ([]byte, bool) {
 		// set nil and have means memdb has it
 		return nil, true
 	}
-	return db.view.Get(string(key))
+	return db.view.Get(key)
 }
 
 func (db *MemDB) Set(key []byte, value []byte) error {
 	skey := string(key)
-	db.addmut(kv.PUT, key, value)
-	db.view.Store(skey, value)
+	ckey := clone(key)
+	cval := clone(value)
+	db.addmut(kv.PUT, ckey, cval)
+	db.view.Set(ckey, cval)
 	if _, have := db.dels[skey]; have {
 		delete(db.dels, skey)
 	}
@@ -45,8 +51,9 @@ func (db *MemDB) Set(key []byte, value []byte) error {
 
 func (db *MemDB) Delete(key []byte) error {
 	skey := string(key)
-	db.addmut(kv.DEL, key, nil)
-	db.view.Delete(skey)
+	ckey := clone(key)
+	db.addmut(kv.DEL, ckey, nil)
+	db.view.Del(ckey)
 	db.dels[skey] = true
 	return nil
 }
@@ -58,12 +65,10 @@ func clone(val []byte) []byte {
 }
 
 func (db *MemDB) addmut(op int, key []byte, value []byte) {
-	ckey := clone(key)
-	cvalue := clone(value)
 	mut := kv.Mutation{
 		Op:    op,
-		Key:   ckey,
-		Value: cvalue,
+		Key:   key,
+		Value: value,
 	}
 	db.muts = append(db.muts, mut)
 }
@@ -74,32 +79,39 @@ func (db *MemDB) GetMutations() []kv.Mutation {
 
 func (db *MemDB) Iter() Iter {
 	return &memdbIter{
-		db: db,
+		db:   db,
+		iter: db.view.Iterator(),
 	}
+}
+
+func (db *MemDB) IsDelete(key []byte) bool {
+	_, have := db.dels[string(key)]
+	return have
 }
 
 type memdbIter struct {
-	db      *MemDB
-	current *omap.Pair[string, []byte]
+	db   *MemDB
+	iter treemap.ForwardIterator[[]byte, []byte]
 }
 
 func (i *memdbIter) Seek(key []byte) ([]byte, []byte) {
-	pair := i.db.view.GetPair(string(key))
-	i.current = pair
-	if pair == nil {
-		return nil, nil
+	for {
+		if !i.iter.Valid() {
+			return nil, nil
+		}
+		if bytes.Compare(i.iter.Key(), key) >= 0 {
+			break
+		} else {
+			i.iter.Next()
+		}
 	}
-	return []byte(pair.Key), pair.Value
+	return i.iter.Key(), i.iter.Value()
 }
 
 func (i *memdbIter) Next() ([]byte, []byte) {
-	if i.current == nil {
-		return nil, nil
+	i.iter.Next()
+	if i.iter.Valid() {
+		return i.iter.Key(), i.iter.Value()
 	}
-	next := i.current.Next()
-	i.current = next
-	if next == nil {
-		return nil, nil
-	}
-	return []byte(next.Key), next.Value
+	return nil, nil
 }

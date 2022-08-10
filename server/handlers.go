@@ -53,6 +53,8 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleTxnGet(args)
 	case "tdel":
 		return c.handleTxnDelete(args)
+	case "tscan":
+		return c.handleTxnScan(args)
 	case "commit":
 		return c.handleCommit(args)
 	case "rollback":
