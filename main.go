@@ -174,12 +174,14 @@ func main() {
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				if rt == PUT {
-					kv := &kv.Mutation{
-						Op:     kv.PUT,
-						Keys:   [][]byte{[]byte(key)},
-						Values: [][]byte{[]byte(val)},
+					muts := []kv.Mutation{
+						kv.Mutation{
+							Op:    kv.PUT,
+							Key:   []byte(key),
+							Value: []byte(val),
+						},
 					}
-					data, err := json.Marshal(kv)
+					data, err := json.Marshal(muts)
 					if err != nil {
 						panic(err)
 					}

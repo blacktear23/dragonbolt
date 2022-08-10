@@ -19,6 +19,7 @@ var (
 	ErrBucketNotExists       = errors.New("Bucket not exists")
 	ErrInvalidQuery          = errors.New("Invalid Query")
 	ErrUnkonwnQueryOperation = errors.New("Unknown query operation")
+	ErrInvalidColumnFamily   = errors.New("Invalid Column Family")
 )
 
 type DiskKVBuilder struct {

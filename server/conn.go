@@ -11,12 +11,14 @@ import (
 
 	"github.com/blacktear23/dragonbolt/kv"
 	"github.com/blacktear23/dragonbolt/protocol"
+	"github.com/blacktear23/dragonbolt/txn"
 	sm "github.com/lni/dragonboat/v4/statemachine"
 )
 
 type rclient struct {
 	conn net.Conn
 	rs   *RedisServer
+	txn  txn.Txn
 }
 
 func (c *rclient) resp(resp protocol.Encodable) error {
@@ -34,6 +36,27 @@ func (c *rclient) parseKey(arg protocol.Encodable) ([]byte, error) {
 	default:
 		return nil, errors.New("Invalid key")
 	}
+}
+
+func (c *rclient) parseCf(arg protocol.Encodable) (string, error) {
+	var (
+		ret string
+		err error
+	)
+
+	switch val := arg.(type) {
+	case *protocol.SimpleString:
+		ret = val.String()
+	case *protocol.BlobString:
+		ret = val.String()
+	default:
+		err = errors.New("Invalid CF")
+	}
+	if err != nil {
+		return ret, err
+	}
+	err = kv.CheckColumnFamily(ret)
+	return ret, err
 }
 
 func (d *rclient) parseNumber(arg protocol.Encodable) (int64, error) {
@@ -93,8 +116,8 @@ func (c *rclient) handleRequests(buf []byte) error {
 
 func (c *rclient) processInc(key []byte, delta int64) (bool, int64, error) {
 	query := &kv.Query{
-		Op:  kv.GET_VALUE,
-		Key: key,
+		Op:   kv.GET_VALUE,
+		Keys: [][]byte{key},
 	}
 	result, err := c.rs.trySyncRead(query, 100)
 	if err != nil {
@@ -106,7 +129,7 @@ func (c *rclient) processInc(key []byte, delta int64) (bool, int64, error) {
 		newValue     []byte = nil
 	)
 	kvs := result.KVS
-	if len(kvs) > 0 {
+	if len(kvs) > 0 && kvs[0].Value != nil {
 		originNumber, err = strconv.ParseInt(string(kvs[0].Value), 10, 64)
 		if err != nil {
 			return false, 0, errors.New("Value not a number")
@@ -123,11 +146,13 @@ func (c *rclient) processInc(key []byte, delta int64) (bool, int64, error) {
 }
 
 func (c *rclient) handleCas(key []byte, value []byte, newValue []byte) (sm.Result, error) {
-	mut := &kv.Mutation{
-		Op:        kv.CAS,
-		Keys:      [][]byte{key},
-		Values:    [][]byte{value},
-		NewValues: [][]byte{newValue},
+	mut := []kv.Mutation{
+		kv.Mutation{
+			Op:       kv.CAS,
+			Key:      key,
+			Value:    value,
+			NewValue: newValue,
+		},
 	}
 	data, err := json.Marshal(mut)
 	if err != nil {
@@ -146,209 +171,3 @@ func (c *rclient) getCommand(cmd protocol.Encodable) (string, error) {
 		return "", ErrInvalidCommand
 	}
 }
-
-func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.Encodable {
-	switch cmd {
-	case "command":
-		return c.handleCmd(args)
-	case "get":
-		return c.handleGet(args)
-	case "set":
-		return c.handleSet(args)
-	case "del":
-		return c.handleDel(args)
-	case "ping":
-		return protocol.NewSimpleString("PONG")
-	case "config":
-		return protocol.NewSimpleString("OK")
-	case "inc":
-		return c.handleIncDec(args, 1)
-	case "dec":
-		return c.handleIncDec(args, -1)
-	case "tso":
-		return c.handleTSO(args)
-	case "scan":
-		return c.handleScan(args)
-	default:
-		return protocol.NewSimpleErrorf("Unsupport command: %s", cmd)
-	}
-}
-
-// Command handlers
-
-func (c *rclient) handleCmd(args []protocol.Encodable) protocol.Encodable {
-	return protocol.NewSimpleString("OK")
-}
-
-func (c *rclient) handleGet(args []protocol.Encodable) protocol.Encodable {
-	if len(args) < 1 {
-		return protocol.NewSimpleError("Need more arguments")
-	}
-	key, err := c.parseKey(args[0])
-	if err != nil {
-		return protocol.NewSimpleError(err.Error())
-	}
-	query := &kv.Query{
-		Op:  kv.GET_VALUE,
-		Key: key,
-	}
-	result, err := c.rs.trySyncRead(query, 100)
-	if err != nil {
-		log.Println("[ERR]", err)
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	kvs := result.KVS
-	if len(kvs) == 0 {
-		return protocol.NewNull()
-	}
-	return protocol.NewBlobString(kvs[0].Value)
-}
-
-func (c *rclient) handleSet(args []protocol.Encodable) protocol.Encodable {
-	if len(args) < 2 {
-		return protocol.NewSimpleError("Need more arguments")
-	}
-	key, err := c.parseKey(args[0])
-	if err != nil {
-		return protocol.NewSimpleError(err.Error())
-	}
-	val, ok := args[1].(protocol.Savable)
-	if !ok {
-		return protocol.NewSimpleError("Invalid data")
-	}
-	kv := &kv.Mutation{
-		Op:     kv.PUT,
-		Keys:   [][]byte{key},
-		Values: [][]byte{val.Bytes()},
-	}
-	data, err := json.Marshal(kv)
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	_, err = c.rs.trySyncPropose(data, 100)
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	return protocol.NewSimpleString("OK")
-}
-
-func (c *rclient) handleTSO(args []protocol.Encodable) protocol.Encodable {
-	tso, err := c.rs.tsoSrv.GetTSO()
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	return protocol.NewNumberUint(tso)
-}
-
-func (c *rclient) handleScan(args []protocol.Encodable) protocol.Encodable {
-	scanHelp := "SCAN StartKey [EndKey] [LIMIT lim]"
-	if len(args) < 1 {
-		return protocol.NewSimpleErrorf("Invalid start key parameters, %s", scanHelp)
-	}
-	startKey, err := c.parseKey(args[0])
-	if err != nil {
-		return protocol.NewSimpleError(err.Error())
-	}
-	var (
-		endKey []byte = nil
-		limit  int64  = 1000
-	)
-	if len(args) == 2 {
-		endKey, err = c.parseKey(args[1])
-		if err != nil {
-			return protocol.NewSimpleErrorf("Invalid end key parameters, %s", scanHelp)
-		}
-	} else if len(args) == 3 {
-		kw, err := c.parseKey(args[1])
-		if err != nil {
-			return protocol.NewSimpleErrorf("Invalid limit parameters, %s", scanHelp)
-		}
-		if strings.ToUpper(string(kw)) != "LIMIT" {
-			return protocol.NewSimpleErrorf("Invalid limit parameters, %s", scanHelp)
-		}
-
-		limit, err = c.parseNumber(args[2])
-		if err != nil {
-			return protocol.NewSimpleErrorf("Invalid limit parameters, %s", scanHelp)
-		}
-	} else if len(args) == 4 {
-		endKey, err = c.parseKey(args[1])
-		if err != nil {
-			return protocol.NewSimpleErrorf("Invalid end key parameters, %s", scanHelp)
-		}
-		kw, err := c.parseKey(args[2])
-		if err != nil || strings.ToUpper(string(kw)) != "LIMIT" {
-			return protocol.NewSimpleErrorf("Invalid limit parameters, %s", scanHelp)
-		}
-		limit, err = c.parseNumber(args[3])
-		if err != nil {
-			return protocol.NewSimpleErrorf("Invalid limit parameters, %s", scanHelp)
-		}
-	}
-
-	query := &kv.Query{
-		Op:    kv.SCAN_KEY,
-		Start: startKey,
-		End:   endKey,
-		Limit: int(limit),
-	}
-	result, err := c.rs.trySyncRead(query, 100)
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	ret := protocol.Array{}
-	for _, kvp := range result.KVS {
-		ret = append(ret, protocol.NewBlobString(kvp.Key))
-	}
-	return ret
-}
-
-func (c *rclient) handleDel(args []protocol.Encodable) protocol.Encodable {
-	if len(args) < 1 {
-		return protocol.NewSimpleError("Need more arguments")
-	}
-	key, err := c.parseKey(args[0])
-	if err != nil {
-		return protocol.NewSimpleError(err.Error())
-	}
-	kv := &kv.Mutation{
-		Op:     kv.DEL,
-		Keys:   [][]byte{key},
-		Values: nil,
-	}
-	data, err := json.Marshal(kv)
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	_, err = c.rs.trySyncPropose(data, 100)
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	return protocol.NewSimpleString("OK")
-}
-
-func (c *rclient) handleIncDec(args []protocol.Encodable, delta int64) protocol.Encodable {
-	if len(args) < 1 {
-		return protocol.NewSimpleError("Need more arguments")
-	}
-	key, err := c.parseKey(args[0])
-	if err != nil {
-		return protocol.NewSimpleError(err.Error())
-	}
-	var (
-		updated   bool
-		newNumber int64
-	)
-	for {
-		updated, newNumber, err = c.processInc(key, delta)
-		if err != nil {
-			return protocol.NewSimpleError(err.Error())
-		}
-		if updated {
-			break
-		}
-	}
-	return protocol.NewNumber(newNumber)
-}
-
-// ~ Command Handlers

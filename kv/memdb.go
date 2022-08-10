@@ -52,11 +52,11 @@ func (m *MemKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 		panic("update called after Close()")
 	}
 	for idx, e := range ents {
-		mut := &Mutation{}
-		if err := json.Unmarshal(e.Cmd, mut); err != nil {
+		muts := []Mutation{}
+		if err := json.Unmarshal(e.Cmd, muts); err != nil {
 			panic(err)
 		}
-		result, perr := m.processMutation(mut)
+		result, perr := m.processMutations(muts)
 		if perr != nil {
 			return nil, perr
 		}
@@ -69,39 +69,38 @@ func (m *MemKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	return ents, nil
 }
 
-func (m *MemKV) processMutation(mut *Mutation) (uint64, error) {
-	kvs := len(mut.Keys)
+func (m *MemKV) processMutations(muts []Mutation) (uint64, error) {
+	for _, mut := range muts {
+		result, err := m.processMutation(mut)
+		if result != RESULT_OK {
+			return result, err
+		}
+	}
+	return RESULT_OK, nil
+}
+
+func (m *MemKV) processMutation(mut Mutation) (uint64, error) {
 	switch mut.Op {
 	case PUT:
-		for i := 0; i < kvs; i++ {
-			key := string(mut.Keys[i])
-			m.data.Store(key, mut.Values[i])
-		}
+		key := string(mut.Key)
+		m.data.Store(key, mut.Value)
 	case DEL:
-		for i := 0; i < kvs; i++ {
-			key := string(mut.Keys[i])
-			m.data.Delete(key)
-		}
+		key := string(mut.Key)
+		m.data.Delete(key)
 	case CAS:
-		// Check for old value equals
-		for i := 0; i < kvs; i++ {
-			key := string(mut.Keys[i])
-			cval, _ := m.data.Load(key)
-			// Compare for nil
-			if cval == nil && mut.Values[i] != nil {
-				return RESULT_FAIL, nil
-			} else if cval != nil && mut.Values[i] == nil {
-				return RESULT_FAIL, nil
-			}
-			bval := cval.([]byte)
-			if !bytes.Equal(bval, mut.Values[i]) {
-				return RESULT_FAIL, nil
-			}
+		key := string(mut.Key)
+		cval, _ := m.data.Load(key)
+		// Compare for nil
+		if cval == nil && mut.Value != nil {
+			return RESULT_FAIL, nil
+		} else if cval != nil && mut.Value == nil {
+			return RESULT_FAIL, nil
 		}
-		for i := 0; i < kvs; i++ {
-			key := string(mut.Keys[i])
-			m.data.Store(key, mut.NewValues[i])
+		bval := cval.([]byte)
+		if !bytes.Equal(bval, mut.Value) {
+			return RESULT_FAIL, nil
 		}
+		m.data.Store(key, mut.NewValue)
 	}
 	return RESULT_OK, nil
 }

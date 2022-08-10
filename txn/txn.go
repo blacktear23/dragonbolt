@@ -1,105 +1,42 @@
 package txn
 
-import "encoding/binary"
-
-var (
-	COL_LOCK  = []byte("l_")
-	COL_WRITE = []byte("w_")
-	COL_DATA  = []byte("d_")
-
-	LOCK_PRIMARY   = byte('P')
-	LOCK_SECONDARY = byte('S')
-)
+import "github.com/blacktear23/dragonbolt/kv"
 
 const UINT64_MAX uint64 = 0xFFFFFFFFFFFFFFFF
 
-type KVPair struct {
-	Key   []byte
-	Value []byte
+func min(a int, b int) int {
+	if a > b {
+		return b
+	}
+	return a
+}
+
+type KVCfOperation interface {
+	GetTSO() (uint64, error)
+	BatchSet(muts []kv.Mutation) error
+	Set(cf string, kvs []kv.KVPair) error
+	Get(cf string, key []byte) ([]byte, error)
+	BatchGet(cf string, keys [][]byte) ([][]byte, error)
+	Scan(cf string, start []byte, end []byte, limit int) ([]kv.KVPair, error)
 }
 
 type KVOperation interface {
-	GetTSO() (uint64, error)
-	Set(kvs []KVPair) error
+	Batch(muts []kv.Mutation) error
 	Get(key []byte) ([]byte, error)
-	Scan(start []byte, end []byte, limit int) ([][]byte, error)
+	Scan(start []byte, end []byte, limit int) ([]kv.KVPair, error)
 }
 
-func encodeKey(column []byte, key []byte, ts uint64) []byte {
-	tsBytes := binary.BigEndian.Uint64(ts)
-	ret := make([]byte, 0, len(key)+10)
-	ret = append(ret, column...)
-	ret = append(ret, key...)
-	ret = append(ret, ':')
-	ret = append(ret, tsBytes...)
-	return ret
+type Cursor interface {
+	Seek(key []byte) error
+	Next() (key []byte, value []byte, err error)
 }
 
-type Txn struct {
-	kvOps   KVOperation
-	startTs uint64
-	primary []byte
-}
-
-func NewTxn(kvOps KVOperation) *Txn {
-	return &Txn{
-		kvOps: kvOps,
-	}
-}
-
-func (t *Txn) Begin() error {
-	tso, err := t.kvOps.GetTSO()
-	if err != nil {
-		return err
-	}
-	t.startTs = tso
-	return nil
-}
-
-func (t *Txn) Set(key []byte, value []byte) error {
-	return nil
-}
-
-func (t *Txn) Get(key []byte) ([]byte, error) {
-	return nil, nil
-}
-
-func (t *Txn) Commit() error {
-	return nil
-}
-
-func (t *Txn) prewrite(key []byte, val []byte) error {
-	isPrimary := t.primary == nil
-
-	if isPrimary {
-
-		t.primary = key
-	} else {
-
-	}
-	return nil
-}
-
-func (t *Txn) writeLock(key []byte, primary []byte) ([]byte, error) {
-	lkey := encodeKey(COL_LOCK, key, t.startTs)
-	dkey := encodeKey(COL_DATA, key, t.startTs)
-	var lval []byte
-	if primary == nil {
-		lval = []byte{LOCK_PRIMARY}
-	} else {
-		lval = make([]byte, 1, len(primary)+1)
-		lval[0] = LOCK_SECONDARY
-		lval = append(lval, primary...)
-	}
-	kvs := []KVPair{
-		KVPair{
-			Key:   lkey,
-			Value: lval,
-		},
-		KVPair{
-			Key:   dkey,
-			Value: dval,
-		},
-	}
-	t.Set(kvs)
+type Txn interface {
+	Begin() error
+	Commit() error
+	Rollback() error
+	Set(key []byte, value []byte) error
+	Get(key []byte) (value []byte, err error)
+	Delete(key []byte) error
+	Cursor() (Cursor, error)
 }

@@ -6,6 +6,7 @@ require (
 	github.com/blacktear23/bolt v1.3.5
 	github.com/lni/dragonboat/v4 v4.0.0-20220724134658-ed44d312daa2
 	github.com/lni/goutils v1.3.1-0.20220604063047-388d67b4dbc4
+	github.com/wk8/go-ordered-map/v2 v2.0.0
 )
 
 require (
@@ -13,6 +14,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/VictoriaMetrics/metrics v1.18.1 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/cockroachdb/errors v1.9.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20211118104740-dabe8e521a4f // indirect
