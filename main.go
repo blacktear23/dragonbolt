@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blacktear23/bolt"
 	"github.com/blacktear23/dragonbolt/kv"
 	"github.com/blacktear23/dragonbolt/server"
+	"github.com/blacktear23/dragonbolt/store"
 	"github.com/blacktear23/dragonbolt/tso"
 	"github.com/lni/dragonboat/v4"
 	"github.com/lni/dragonboat/v4/config"
@@ -71,34 +71,58 @@ func printUsage() {
 	fmt.Fprintf(os.Stdout, "get key\n")
 }
 
+func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonboat.NodeHost, initMembers map[uint64]string, replicaID uint64) {
+	dbs, err := tsoSrv.ListDB()
+	if err != nil {
+		log.Println("List DB config got error:", err)
+		return
+	}
+	for _, db := range dbs {
+		stor, err := sm.CreateStore(db.ShardID)
+		if err == nil {
+			serr := stor.StartReplica(nh, initMembers, replicaID, false)
+			if serr != nil {
+				log.Println("Start Replica DB", db.Name, "Shard ID", db.ShardID, "got error:", err)
+			}
+		} else {
+			log.Println("Create DB", db.Name, "Shard ID", db.ShardID, "got error:", err)
+		}
+	}
+}
+
 func main() {
 	var (
 		replicaID int
 		addr      string
 		join      bool
-		dbFile    string
+		dbDir     string
 		redisAddr string
 		walDir    string
 		rtt       int
 	)
 	flag.IntVar(&replicaID, "replica-id", 1, "Replica ID to use")
-	flag.IntVar(&rtt, "rtt", 10, "RTT")
+	flag.IntVar(&rtt, "rtt", 100, "RTT")
 	flag.StringVar(&addr, "addr", "", "Nodehost address")
-	flag.StringVar(&walDir, "wal-dir", "helloworld", "WAL directory")
-	flag.StringVar(&dbFile, "db-file", "", "Database file name")
+	flag.StringVar(&walDir, "wal-dir", "/tmp/sample/wal", "WAL directory")
+	flag.StringVar(&dbDir, "db-dir", "/tmp/sample/db", "Database file path")
 	flag.BoolVar(&join, "join", false, "Joining a new node")
 	flag.StringVar(&redisAddr, "redis-addr", "", "Redis Server listen address")
 	flag.Parse()
-	if dbFile == "" {
-		fmt.Println("Require -db-file parameter")
+	if dbDir == "" {
+		fmt.Println("Require -db-dir parameter")
 		return
+	} else {
+		err := os.MkdirAll(dbDir, 0755)
+		if err != nil {
+			log.Fatal("Cannot create db dir", err)
+		}
 	}
-
-	db, err := bolt.Open(dbFile, 0600, nil)
+	sm := store.NewStoreManager(dbDir)
+	defer sm.Close()
+	stor, err := sm.CreateStore(exampleShardID)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
 	initMembers := make(map[uint64]string)
 	if !join {
 		for idx, v := range addresses {
@@ -117,15 +141,6 @@ func main() {
 	logger.GetLogger("rsm").SetLevel(logger.ERROR)
 	logger.GetLogger("transport").SetLevel(logger.ERROR)
 	logger.GetLogger("grpc").SetLevel(logger.ERROR)
-	rc := config.Config{
-		ReplicaID:          uint64(replicaID),
-		ShardID:            exampleShardID,
-		ElectionRTT:        10,
-		HeartbeatRTT:       1,
-		CheckQuorum:        true,
-		SnapshotEntries:    0,
-		CompactionOverhead: 16,
-	}
 	datadir := filepath.Join(
 		"/tmp",
 		walDir,
@@ -141,13 +156,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	/*
-		builder := kv.MemKVBuilder{}
-	*/
-	builder := kv.DiskKVBuilder{
-		DB: db,
-	}
-	if err := nh.StartOnDiskReplica(initMembers, join, builder.Build, rc); err != nil {
+	if err := stor.StartReplica(nh, initMembers, uint64(replicaID), join); err != nil {
 		log.Fatal(err)
 	}
 	raftStopper := syncutil.NewStopper()
@@ -207,14 +216,16 @@ func main() {
 		}
 	})
 
-	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbFile, initMembers)
+	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbDir, initMembers, exampleShardID+1, sm)
 	if err != nil {
 		log.Println("Start TSO Server error", err)
 	}
 
+	startRestStores(tsoServer, sm, nh, initMembers, uint64(replicaID))
+
 	var rs *server.RedisServer = nil
 	if redisAddr != "" {
-		rs := server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer)
+		rs := server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer, sm)
 		rs.Run()
 		log.Println("Start Redis Server for", redisAddr)
 	}
@@ -236,7 +247,7 @@ func main() {
 				os.Stdout.WriteString("> ")
 			} else if s == "stat\n" {
 				leaderID, term, valid, err := nh.GetLeaderID(exampleShardID)
-				os.Stdout.WriteString(fmt.Sprintf("Node ID: %v\n", rc.ReplicaID))
+				os.Stdout.WriteString(fmt.Sprintf("Node ID: %v\n", replicaID))
 				os.Stdout.WriteString(fmt.Sprintf("Leader ID: %v term %v valid %v err %v\n", leaderID, term, valid, err))
 				os.Stdout.WriteString("> ")
 

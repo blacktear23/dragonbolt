@@ -50,6 +50,14 @@ func NewBlobString(data []byte) *BlobString {
 	}
 }
 
+func NewBlobStringFromString(value string) *BlobString {
+	data := []byte(value)
+	return &BlobString{
+		length: len(data),
+		data:   data,
+	}
+}
+
 func (bs *BlobString) GetData() []byte {
 	return bs.data
 }

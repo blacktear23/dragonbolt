@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/blacktear23/dragonbolt/kv"
+	"github.com/blacktear23/dragonbolt/store"
 	"github.com/blacktear23/dragonbolt/tso"
 	"github.com/lni/dragonboat/v4"
-	"github.com/lni/dragonboat/v4/client"
 	sm "github.com/lni/dragonboat/v4/statemachine"
 )
 
@@ -23,20 +23,19 @@ type RedisServer struct {
 	addr     string
 	timeout  time.Duration
 	nodeHost *dragonboat.NodeHost
-	cs       *client.Session
 	ln       net.Listener
 	tsoSrv   *tso.TSOServer
+	sm       *store.StoreManager
 }
 
-func NewRedisServer(addr string, nh *dragonboat.NodeHost, sid uint64, tsoServer *tso.TSOServer) *RedisServer {
-	cs := nh.GetNoOPSession(sid)
+func NewRedisServer(addr string, nh *dragonboat.NodeHost, sid uint64, tsoServer *tso.TSOServer, sm *store.StoreManager) *RedisServer {
 	return &RedisServer{
 		shardID:  sid,
 		addr:     addr,
 		nodeHost: nh,
 		timeout:  10 * time.Second,
-		cs:       cs,
 		tsoSrv:   tsoServer,
+		sm:       sm,
 	}
 }
 
@@ -70,6 +69,7 @@ func (rs *RedisServer) handleConn(conn net.Conn) {
 	c := rclient{
 		conn: conn,
 		rs:   rs,
+		sid:  rs.shardID,
 	}
 	buf := make([]byte, 16384)
 	for {
@@ -93,14 +93,15 @@ func min(a int, b int) int {
 	return a
 }
 
-func (rs *RedisServer) trySyncPropose(data []byte, tryTimes int) (sm.Result, error) {
+func (rs *RedisServer) trySyncPropose(shardID uint64, data []byte, tryTimes int) (sm.Result, error) {
 	var (
 		result sm.Result
 		err    error
 	)
+	cs := rs.nodeHost.GetNoOPSession(shardID)
 	for i := 0; i < tryTimes; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), rs.timeout)
-		result, err = rs.nodeHost.SyncPropose(ctx, rs.cs, data)
+		result, err = rs.nodeHost.SyncPropose(ctx, cs, data)
 		cancel()
 		if err == nil {
 			return result, nil
@@ -118,14 +119,14 @@ func (rs *RedisServer) trySyncPropose(data []byte, tryTimes int) (sm.Result, err
 	return result, err
 }
 
-func (rs *RedisServer) trySyncRead(query *kv.Query, tryTimes int) (*kv.QueryResult, error) {
+func (rs *RedisServer) trySyncRead(shardID uint64, query *kv.Query, tryTimes int) (*kv.QueryResult, error) {
 	var (
 		err    error
 		result interface{}
 	)
 	for i := 0; i < tryTimes; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), rs.timeout)
-		result, err = rs.nodeHost.SyncRead(ctx, rs.shardID, query)
+		result, err = rs.nodeHost.SyncRead(ctx, shardID, query)
 		cancel()
 		if err == nil {
 			return result.(*kv.QueryResult), nil

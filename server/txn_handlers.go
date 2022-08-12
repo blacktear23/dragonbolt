@@ -15,7 +15,7 @@ var (
 )
 
 type txnOps struct {
-	rs *RedisServer
+	rc *rclient
 }
 
 func (o *txnOps) Batch(muts []kv.Mutation) error {
@@ -23,7 +23,7 @@ func (o *txnOps) Batch(muts []kv.Mutation) error {
 	if err != nil {
 		return err
 	}
-	_, err = o.rs.trySyncPropose(data, 100)
+	_, err = o.rc.trySyncPropose(data, 100)
 	return err
 }
 
@@ -32,7 +32,7 @@ func (o *txnOps) Get(key []byte) ([]byte, error) {
 		Op:   kv.GET_VALUE,
 		Keys: [][]byte{key},
 	}
-	result, err := o.rs.trySyncRead(query, 100)
+	result, err := o.rc.trySyncRead(query, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (o *txnOps) Scan(start []byte, end []byte, limit int) ([]kv.KVPair, error) 
 		Limit:   limit,
 		SameLen: true,
 	}
-	result, err := o.rs.trySyncRead(query, 100)
+	result, err := o.rc.trySyncRead(query, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (o *txnOps) Scan(start []byte, end []byte, limit int) ([]kv.KVPair, error) 
 
 func (c *rclient) newTxnOps() *txnOps {
 	return &txnOps{
-		rs: c.rs,
+		rc: c,
 	}
 }
 

@@ -19,12 +19,21 @@ type rclient struct {
 	conn net.Conn
 	rs   *RedisServer
 	txn  txn.Txn
+	sid  uint64
 }
 
 func (c *rclient) resp(resp protocol.Encodable) error {
 	data := resp.Encode()
 	_, err := c.conn.Write(data)
 	return err
+}
+
+func (c *rclient) trySyncRead(query *kv.Query, tryTimes int) (*kv.QueryResult, error) {
+	return c.rs.trySyncRead(c.sid, query, tryTimes)
+}
+
+func (c *rclient) trySyncPropose(data []byte, tryTimes int) (sm.Result, error) {
+	return c.rs.trySyncPropose(c.sid, data, tryTimes)
 }
 
 func (c *rclient) parseKey(arg protocol.Encodable) ([]byte, error) {
@@ -119,7 +128,7 @@ func (c *rclient) processInc(key []byte, delta int64) (bool, int64, error) {
 		Op:   kv.GET_VALUE,
 		Keys: [][]byte{key},
 	}
-	result, err := c.rs.trySyncRead(query, 100)
+	result, err := c.trySyncRead(query, 100)
 	if err != nil {
 		return false, 0, err
 	}
@@ -158,7 +167,7 @@ func (c *rclient) handleCas(key []byte, value []byte, newValue []byte) (sm.Resul
 	if err != nil {
 		return sm.Result{}, err
 	}
-	return c.rs.trySyncPropose(data, 100)
+	return c.trySyncPropose(data, 100)
 }
 
 func (c *rclient) getCommand(cmd protocol.Encodable) (string, error) {

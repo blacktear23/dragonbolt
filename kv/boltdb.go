@@ -27,6 +27,14 @@ type DiskKV struct {
 	aborted     bool
 }
 
+func NewDiskKV(clusterID uint64, nodeID uint64, db *bolt.DB) *DiskKV {
+	return &DiskKV{
+		clusterID: clusterID,
+		nodeID:    nodeID,
+		db:        db,
+	}
+}
+
 func (d *DiskKV) GetKey(key []byte) ([]byte, error) {
 	var ret []byte
 	terr := d.db.View(func(txn *bolt.Tx) error {

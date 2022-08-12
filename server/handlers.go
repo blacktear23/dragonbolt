@@ -23,9 +23,9 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return protocol.NewSimpleString("PONG")
 	case "config":
 		return protocol.NewSimpleString("OK")
-	case "inc":
+	case "inc", "incr":
 		return c.handleIncDec(args, 1)
-	case "dec":
+	case "dec", "decr":
 		return c.handleIncDec(args, -1)
 	case "tso":
 		return c.handleTSO(args)
@@ -59,6 +59,16 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleCommit(args)
 	case "rollback":
 		return c.handleRollback(args)
+	case "db.create":
+		return c.handleCreateDB(args)
+	case "db.use":
+		return c.handleUseDB(args)
+	case "db.list":
+		return c.handleListDB(args)
+	case "db.curr", "db.current":
+		return c.handleCurrentDB(args)
+	case "db.del", "db.delete":
+		return c.handleDeleteDB(args)
 	default:
 		return protocol.NewSimpleErrorf("Unsupport command: %s", cmd)
 	}
@@ -82,7 +92,7 @@ func (c *rclient) handleGet(args []protocol.Encodable) protocol.Encodable {
 		Op:   kv.GET_VALUE,
 		Keys: [][]byte{key},
 	}
-	result, err := c.rs.trySyncRead(query, 100)
+	result, err := c.trySyncRead(query, 100)
 	if err != nil {
 		log.Println("[ERR]", err)
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
@@ -110,7 +120,7 @@ func (c *rclient) handleMget(args []protocol.Encodable) protocol.Encodable {
 		Op:   kv.GET_VALUE,
 		Keys: keys,
 	}
-	result, err := c.rs.trySyncRead(query, 100)
+	result, err := c.trySyncRead(query, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -149,7 +159,7 @@ func (c *rclient) handleMset(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
-	_, err = c.rs.trySyncPropose(data, 100)
+	_, err = c.trySyncPropose(data, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -179,7 +189,7 @@ func (c *rclient) handleSet(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
-	_, err = c.rs.trySyncPropose(data, 100)
+	_, err = c.trySyncPropose(data, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -246,7 +256,7 @@ func (c *rclient) handleScan(args []protocol.Encodable) protocol.Encodable {
 		End:   endKey,
 		Limit: int(limit),
 	}
-	result, err := c.rs.trySyncRead(query, 100)
+	result, err := c.trySyncRead(query, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -275,7 +285,7 @@ func (c *rclient) handleDel(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
-	_, err = c.rs.trySyncPropose(data, 100)
+	_, err = c.trySyncPropose(data, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -334,7 +344,7 @@ func (c *rclient) handleCfSet(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
-	_, err = c.rs.trySyncPropose(data, 100)
+	_, err = c.trySyncPropose(data, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -358,7 +368,7 @@ func (c *rclient) handleCfGet(args []protocol.Encodable) protocol.Encodable {
 		Cf:   cf,
 		Keys: [][]byte{key},
 	}
-	result, err := c.rs.trySyncRead(query, 100)
+	result, err := c.trySyncRead(query, 100)
 	if err != nil {
 		log.Println("[ERR]", err)
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
@@ -393,7 +403,7 @@ func (c *rclient) handleCfDel(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
-	_, err = c.rs.trySyncPropose(data, 100)
+	_, err = c.trySyncPropose(data, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -462,7 +472,7 @@ func (c *rclient) handleCfScan(args []protocol.Encodable, reverse bool) protocol
 		Limit:   int(limit),
 		SameLen: true,
 	}
-	result, err := c.rs.trySyncRead(query, 100)
+	result, err := c.trySyncRead(query, 100)
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
