@@ -27,6 +27,14 @@ const (
 	CF_RSCAN_KEY   = 15
 	CF_RSCAN_VALUE = 16
 
+	MVCC_GET        = 20
+	MVCC_GET_VALUE  = 21
+	MVCC_SET        = 22
+	MVCC_DEL        = 23
+	MVCC_SCAN       = 24
+	MVCC_SCAN_KEY   = 25
+	MVCC_SCAN_VALUE = 26
+
 	RESULT_ERR  uint64 = 0
 	RESULT_OK   uint64 = 1
 	RESULT_FAIL uint64 = 2
@@ -42,16 +50,18 @@ type Mutation struct {
 	Key      []byte `json:"key"`
 	Value    []byte `json:"val"`
 	NewValue []byte `json:"nval"`
+	Version  uint64 `json:"ver"`
 }
 
 type Query struct {
 	Op      int      `json:"op"`
 	Cf      string   `json:"cf"`
-	Keys    [][]byte `json: keys`
-	Start   []byte   `json: start`
-	End     []byte   `json: end`
-	Limit   int      `json: limit`
-	SameLen bool     `json: samelen`
+	Keys    [][]byte `json:"keys"`
+	Start   []byte   `json:"start"`
+	End     []byte   `json:"end"`
+	Limit   int      `json:"limit"`
+	SameLen bool     `json:"samelen"`
+	Version uint64   `json:"ver"`
 }
 
 type KVPair struct {
@@ -65,11 +75,11 @@ type QueryResult struct {
 
 func buildKVP(key, value []byte, op int) KVPair {
 	switch op {
-	case SCAN_KEY, CF_SCAN_KEY, CF_RSCAN_KEY:
+	case SCAN_KEY, CF_SCAN_KEY, CF_RSCAN_KEY, MVCC_SCAN_KEY:
 		return KVPair{
 			Key: key,
 		}
-	case SCAN_VALUE, GET_VALUE, CF_GET_VALUE, CF_SCAN_VALUE, CF_RSCAN_VALUE:
+	case SCAN_VALUE, GET_VALUE, CF_GET_VALUE, CF_SCAN_VALUE, CF_RSCAN_VALUE, MVCC_GET_VALUE, MVCC_SCAN_VALUE:
 		return KVPair{
 			Value: value,
 		}

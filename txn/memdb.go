@@ -13,18 +13,24 @@ type Iter interface {
 }
 
 type MemDB struct {
-	muts []kv.Mutation
-	view *treemap.TreeMap[[]byte, []byte]
-	dels map[string]bool
+	PutOp   int
+	DelOp   int
+	Version uint64
+	muts    []kv.Mutation
+	view    *treemap.TreeMap[[]byte, []byte]
+	dels    map[string]bool
 }
 
-func NewMemDB() *MemDB {
+func NewMemDB(putOp int, delOp int, version uint64) *MemDB {
 	return &MemDB{
 		muts: []kv.Mutation{},
 		view: treemap.NewWithKeyCompare[[]byte, []byte](func(a []byte, b []byte) bool {
 			return bytes.Compare(a, b) < 0
 		}),
-		dels: make(map[string]bool),
+		dels:    make(map[string]bool),
+		PutOp:   putOp,
+		DelOp:   delOp,
+		Version: version,
 	}
 }
 
@@ -41,7 +47,7 @@ func (db *MemDB) Set(key []byte, value []byte) error {
 	skey := string(key)
 	ckey := clone(key)
 	cval := clone(value)
-	db.addmut(kv.PUT, ckey, cval)
+	db.addmut(db.PutOp, ckey, cval)
 	db.view.Set(ckey, cval)
 	if _, have := db.dels[skey]; have {
 		delete(db.dels, skey)
@@ -52,7 +58,7 @@ func (db *MemDB) Set(key []byte, value []byte) error {
 func (db *MemDB) Delete(key []byte) error {
 	skey := string(key)
 	ckey := clone(key)
-	db.addmut(kv.DEL, ckey, nil)
+	db.addmut(db.DelOp, ckey, nil)
 	db.view.Del(ckey)
 	db.dels[skey] = true
 	return nil
@@ -69,6 +75,9 @@ func (db *MemDB) addmut(op int, key []byte, value []byte) {
 		Op:    op,
 		Key:   key,
 		Value: value,
+	}
+	if db.Version != 0 {
+		mut.Version = db.Version
 	}
 	db.muts = append(db.muts, mut)
 }

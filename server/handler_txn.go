@@ -1,80 +1,11 @@
 package server
 
 import (
-	"bytes"
-	"encoding/json"
 	"strings"
 
 	"github.com/blacktear23/dragonbolt/kv"
 	"github.com/blacktear23/dragonbolt/protocol"
-	"github.com/blacktear23/dragonbolt/txn"
 )
-
-var (
-	_ txn.KVOperation = (txn.KVOperation)(&txnOps{})
-)
-
-type txnOps struct {
-	rc *rclient
-}
-
-func (o *txnOps) Batch(muts []kv.Mutation) error {
-	data, err := json.Marshal(muts)
-	if err != nil {
-		return err
-	}
-	_, err = o.rc.trySyncPropose(data, 100)
-	return err
-}
-
-func (o *txnOps) Get(key []byte) ([]byte, error) {
-	query := &kv.Query{
-		Op:   kv.GET_VALUE,
-		Keys: [][]byte{key},
-	}
-	result, err := o.rc.trySyncRead(query, 100)
-	if err != nil {
-		return nil, err
-	}
-	if len(result.KVS) == 0 {
-		return nil, nil
-	}
-	return result.KVS[0].Value, nil
-}
-
-func (o *txnOps) Scan(start []byte, end []byte, limit int) ([]kv.KVPair, error) {
-	query := &kv.Query{
-		Op:      kv.SCAN,
-		Start:   start,
-		End:     end,
-		Limit:   limit,
-		SameLen: true,
-	}
-	result, err := o.rc.trySyncRead(query, 100)
-	if err != nil {
-		return nil, err
-	}
-	return result.KVS, nil
-}
-
-func (c *rclient) newTxnOps() *txnOps {
-	return &txnOps{
-		rc: c,
-	}
-}
-
-func (c *rclient) handleBegin(args []protocol.Encodable) protocol.Encodable {
-	if c.txn != nil {
-		return protocol.NewSimpleError("Already begin")
-	}
-	txn := txn.NewRcTxn(c.newTxnOps())
-	err := txn.Begin()
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	c.txn = txn
-	return protocol.NewSimpleString("OK")
-}
 
 func (c *rclient) handleTxnSet(args []protocol.Encodable) protocol.Encodable {
 	if c.txn == nil {
@@ -131,30 +62,6 @@ func (c *rclient) handleTxnDelete(args []protocol.Encodable) protocol.Encodable 
 		return protocol.NewSimpleError(err.Error())
 	}
 	err = c.txn.Delete(key)
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	return protocol.NewSimpleString("OK")
-}
-
-func (c *rclient) handleCommit(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
-	err := c.txn.Commit()
-	c.txn = nil
-	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
-	}
-	return protocol.NewSimpleString("OK")
-}
-
-func (c *rclient) handleRollback(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
-	err := c.txn.Rollback()
-	c.txn = nil
 	if err != nil {
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
@@ -234,9 +141,54 @@ func (c *rclient) handleTxnScan(args []protocol.Encodable) protocol.Encodable {
 	return ret
 }
 
-func keyCompare(val1 []byte, val2 []byte) int {
-	if val2 == nil {
-		return -1
+func (c *rclient) handleTxnMset(args []protocol.Encodable) protocol.Encodable {
+	if len(args) < 2 || len(args)%2 != 0 {
+		return protocol.NewSimpleError("Need more arguments")
 	}
-	return bytes.Compare(val1, val2)
+	kvs := []kv.KVPair{}
+	for i := 0; i < len(args); i += 2 {
+		key, err := c.parseKey(args[i])
+		if err != nil {
+			return protocol.NewSimpleError(err.Error())
+		}
+		val, ok := args[i+1].(protocol.Savable)
+		if !ok {
+			return protocol.NewSimpleError("Invalid data")
+		}
+		kvs = append(kvs, kv.KVPair{
+			Key:   key,
+			Value: val.Bytes(),
+		})
+	}
+	for _, kv := range kvs {
+		c.txn.Set(kv.Key, kv.Value)
+	}
+	return protocol.NewSimpleString("OK")
+}
+
+func (c *rclient) handleTxnMget(args []protocol.Encodable) protocol.Encodable {
+	if len(args) < 1 {
+		return protocol.NewSimpleError("Need more arguments")
+	}
+	keys := make([][]byte, 0, len(args))
+	for _, arg := range args {
+		key, err := c.parseKey(arg)
+		if err != nil {
+			return protocol.NewSimpleError(err.Error())
+		}
+		keys = append(keys, key)
+	}
+	ret := protocol.Array{}
+	for _, key := range keys {
+		value, err := c.txn.Get(key)
+		if err != nil {
+			return protocol.NewSimpleErrorf("Internal Error: %v", err)
+		}
+		if value == nil {
+			ret = append(ret, protocol.NewNull())
+		} else {
+			ret = append(ret, protocol.NewBlobString(value))
+		}
+	}
+	return ret
 }

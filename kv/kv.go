@@ -33,12 +33,3 @@ func (b *DiskKVBuilder) Build(clusterID uint64, nodeID uint64) sm.IOnDiskStateMa
 		db:        b.DB,
 	}
 }
-
-type MemKVBuilder struct{}
-
-func (m *MemKVBuilder) Build(clusterID uint64, nodeID uint64) sm.IOnDiskStateMachine {
-	return &MemKV{
-		clusterID: clusterID,
-		nodeID:    nodeID,
-	}
-}

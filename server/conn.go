@@ -16,10 +16,11 @@ import (
 )
 
 type rclient struct {
-	conn net.Conn
-	rs   *RedisServer
-	txn  txn.Txn
-	sid  uint64
+	conn   net.Conn
+	rs     *RedisServer
+	txn    txn.Txn
+	txnVer uint64
+	sid    uint64
 }
 
 func (c *rclient) resp(resp protocol.Encodable) error {
@@ -44,6 +45,17 @@ func (c *rclient) parseKey(arg protocol.Encodable) ([]byte, error) {
 		return val.Bytes(), nil
 	default:
 		return nil, errors.New("Invalid key")
+	}
+}
+
+func (c *rclient) parseString(arg protocol.Encodable) (string, error) {
+	switch val := arg.(type) {
+	case *protocol.SimpleString:
+		return val.String(), nil
+	case *protocol.BlobString:
+		return val.String(), nil
+	default:
+		return "", errors.New("Invalid string")
 	}
 }
 
@@ -179,4 +191,8 @@ func (c *rclient) getCommand(cmd protocol.Encodable) (string, error) {
 	default:
 		return "", ErrInvalidCommand
 	}
+}
+
+func (c *rclient) getTso() (uint64, error) {
+	return c.rs.tsoSrv.GetTSO()
 }

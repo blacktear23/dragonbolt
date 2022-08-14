@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/blacktear23/bolt"
+	"github.com/blacktear23/dragonbolt/mvcc"
 	sm "github.com/lni/dragonboat/v4/statemachine"
 )
 
@@ -115,6 +116,10 @@ func (d *DiskKV) Lookup(q interface{}) (interface{}, error) {
 		return d.processCfScan(query)
 	case CF_RSCAN, CF_RSCAN_KEY, CF_RSCAN_VALUE:
 		return d.processCfReverseScan(query)
+	case MVCC_GET, MVCC_GET_VALUE:
+		return d.processMvccGet(query)
+	case MVCC_SCAN, MVCC_SCAN_KEY, MVCC_SCAN_VALUE:
+		return d.processMvccScan(query)
 	}
 	return nil, ErrUnkonwnQueryOperation
 }
@@ -300,6 +305,61 @@ func (d *DiskKV) processCfReverseScan(query *Query) (*QueryResult, error) {
 	return ret, err
 }
 
+func (d *DiskKV) processMvccGet(query *Query) (*QueryResult, error) {
+	ret := &QueryResult{}
+	err := d.db.View(func(txn *bolt.Tx) error {
+		mvccTxn := mvcc.NewTwoCFMvcc(txn)
+		for _, key := range query.Keys {
+			val, err := mvccTxn.Get(query.Version, key)
+			if err != nil && !mvcc.IsKeyNotFoundError(err) {
+				return err
+			}
+			ret.KVS = append(ret.KVS, buildKVP(key, val, query.Op))
+		}
+		return nil
+	})
+	if err == nil && d.closed {
+		panic("lookup returned valid result when DiskKV is already closed")
+	}
+	return ret, err
+}
+
+func (d *DiskKV) processMvccScan(query *Query) (*QueryResult, error) {
+	ret := &QueryResult{}
+	err := d.db.View(func(txn *bolt.Tx) error {
+		mvccTxn := mvcc.NewTwoCFMvcc(txn)
+		c := mvccTxn.Cursor(query.Version)
+		// Check for first result
+		k, v := c.Seek(query.Start)
+		if k == nil {
+			// Nothing
+			return nil
+		} else if keyCompare(k, query.End) >= 0 {
+			// Next greater or equals than end key just return nothing
+			return nil
+		}
+		ret.AddKVPair(k, v, query.Op)
+
+		// CHeck for rest results
+		for i := 1; i < query.Limit; i++ {
+			k, v = c.Next()
+			if k == nil {
+				// Nothing
+				return nil
+			} else if keyCompare(k, query.End) >= 0 {
+				// Next greater or equals than end key just return nothing
+				return nil
+			}
+			ret.AddKVPair(k, v, query.Op)
+		}
+		return nil
+	})
+	if err == nil && d.closed {
+		panic("lookup returned valid result when DiskKV is already closed")
+	}
+	return ret, err
+}
+
 func sameLen(val1 []byte, val2 []byte, sameLen bool) bool {
 	if sameLen {
 		return len(val1) == len(val2)
@@ -369,6 +429,8 @@ func (d *DiskKV) processMutations(txn *bolt.Tx, bucket *bolt.Bucket, muts []Muta
 		switch mut.Op {
 		case CF_PUT, CF_DEL:
 			result, err = d.processCFMutation(txn, mut)
+		case MVCC_SET, MVCC_DEL:
+			result, err = d.processMvccMutation(txn, mut)
 		default:
 			result, err = d.processMutation(bucket, mut)
 		}
@@ -424,6 +486,23 @@ func (d *DiskKV) processCFMutation(txn *bolt.Tx, mut Mutation) (uint64, error) {
 		err = cfbucket.Put(mut.Key, mut.Value)
 	case CF_DEL:
 		err = cfbucket.Delete(mut.Key)
+	}
+	if err != nil {
+		return RESULT_ERR, err
+	}
+	return RESULT_OK, nil
+}
+
+func (d *DiskKV) processMvccMutation(txn *bolt.Tx, mut Mutation) (uint64, error) {
+	var (
+		err error
+	)
+	mvccTxn := mvcc.NewTwoCFMvcc(txn)
+	switch mut.Op {
+	case MVCC_SET:
+		err = mvccTxn.Set(mut.Version, mut.Key, mut.Value)
+	case MVCC_DEL:
+		err = mvccTxn.Delete(mut.Version, mut.Key)
 	}
 	if err != nil {
 		return RESULT_ERR, err

@@ -8,28 +8,35 @@ import (
 )
 
 var (
-	_ Txn = (Txn)(&RcTxn{})
+	_ Txn    = (*MemMergeTxn)(nil)
+	_ Cursor = (*memMergeTxnCursor)(nil)
 
 	ErrNotBegin = errors.New("Transaction not begin")
 )
 
-type RcTxn struct {
+type MemMergeTxn struct {
+	putOp int
+	delOp int
+	ver   uint64
 	ops   KVOperation
 	memdb *MemDB
 }
 
-func NewRcTxn(kvOps KVOperation) *RcTxn {
-	return &RcTxn{
-		ops: kvOps,
+func NewMemMergeTxn(kvOps KVOperation, putOp int, delOp int, ver uint64) *MemMergeTxn {
+	return &MemMergeTxn{
+		putOp: putOp,
+		delOp: delOp,
+		ver:   ver,
+		ops:   kvOps,
 	}
 }
 
-func (t *RcTxn) Begin() error {
-	t.memdb = NewMemDB()
+func (t *MemMergeTxn) Begin() error {
+	t.memdb = NewMemDB(t.putOp, t.delOp, t.ver)
 	return nil
 }
 
-func (t *RcTxn) Commit() error {
+func (t *MemMergeTxn) Commit() error {
 	if t.memdb == nil {
 		return ErrNotBegin
 	}
@@ -39,13 +46,13 @@ func (t *RcTxn) Commit() error {
 	return err
 }
 
-func (t *RcTxn) Rollback() error {
+func (t *MemMergeTxn) Rollback() error {
 	// Just drop memdb
 	t.memdb = nil
 	return nil
 }
 
-func (t *RcTxn) Set(key []byte, value []byte) error {
+func (t *MemMergeTxn) Set(key []byte, value []byte) error {
 	if t.memdb == nil {
 		return ErrNotBegin
 	}
@@ -53,7 +60,17 @@ func (t *RcTxn) Set(key []byte, value []byte) error {
 	return nil
 }
 
-func (t *RcTxn) Delete(key []byte) error {
+func (t *MemMergeTxn) BatchSet(kvs []kv.KVPair) error {
+	if t.memdb == nil {
+		return ErrNotBegin
+	}
+	for _, kv := range kvs {
+		t.memdb.Set(kv.Key, kv.Value)
+	}
+	return nil
+}
+
+func (t *MemMergeTxn) Delete(key []byte) error {
 	if t.memdb == nil {
 		return ErrNotBegin
 	}
@@ -61,7 +78,7 @@ func (t *RcTxn) Delete(key []byte) error {
 	return nil
 }
 
-func (t *RcTxn) Get(key []byte) ([]byte, error) {
+func (t *MemMergeTxn) Get(key []byte) ([]byte, error) {
 	if t.memdb == nil {
 		return nil, ErrNotBegin
 	}
@@ -72,11 +89,41 @@ func (t *RcTxn) Get(key []byte) ([]byte, error) {
 	return t.ops.Get(key)
 }
 
-func (t *RcTxn) Cursor() (Cursor, error) {
+func (t *MemMergeTxn) BatchGet(keys [][]byte) ([]kv.KVPair, error) {
 	if t.memdb == nil {
 		return nil, ErrNotBegin
 	}
-	return &RcTxnCursor{
+	ret := make([]kv.KVPair, len(keys))
+	emptyIds := make([]int, 0, len(keys))
+	emptyKeys := make([][]byte, 0, len(keys))
+	for i, key := range keys {
+		mval, have := t.memdb.Get(key)
+		if have {
+			ret[i] = kv.KVPair{Key: key, Value: mval}
+		} else {
+			emptyIds = append(emptyIds, i)
+			emptyKeys = append(emptyKeys, key)
+		}
+	}
+	if len(emptyIds) == 0 {
+		return ret, nil
+	}
+	kvs, err := t.ops.BatchGet(emptyKeys)
+	if err != nil {
+		return nil, err
+	}
+	for i, kv := range kvs {
+		idx := emptyIds[i]
+		ret[idx] = kv
+	}
+	return ret, nil
+}
+
+func (t *MemMergeTxn) Cursor() (Cursor, error) {
+	if t.memdb == nil {
+		return nil, ErrNotBegin
+	}
+	return &memMergeTxnCursor{
 		memdb:     t.memdb,
 		memIter:   t.memdb.Iter(),
 		ops:       t.ops,
@@ -84,7 +131,7 @@ func (t *RcTxn) Cursor() (Cursor, error) {
 	}, nil
 }
 
-type RcTxnCursor struct {
+type memMergeTxnCursor struct {
 	memdb     *MemDB
 	memIter   Iter
 	ops       KVOperation
@@ -99,7 +146,7 @@ type RcTxnCursor struct {
 	memcur *kv.KVPair
 }
 
-func (c *RcTxnCursor) kvSeek(key []byte) error {
+func (c *memMergeTxnCursor) kvSeek(key []byte) error {
 	var err error
 	c.kvbuf, err = c.ops.Scan(key, nil, c.batchSize)
 	if err != nil {
@@ -118,7 +165,7 @@ func (c *RcTxnCursor) kvSeek(key []byte) error {
 	return nil
 }
 
-func (c *RcTxnCursor) memSeek(key []byte) {
+func (c *memMergeTxnCursor) memSeek(key []byte) {
 	memsk, memsv := c.memIter.Seek(key)
 	if memsk == nil {
 		c.memcur = nil
@@ -127,7 +174,7 @@ func (c *RcTxnCursor) memSeek(key []byte) {
 	}
 }
 
-func (c *RcTxnCursor) Seek(key []byte) error {
+func (c *memMergeTxnCursor) Seek(key []byte) error {
 	err := c.kvSeek(key)
 	if err != nil {
 		return err
@@ -136,7 +183,7 @@ func (c *RcTxnCursor) Seek(key []byte) error {
 	return nil
 }
 
-func (c *RcTxnCursor) nextKV() error {
+func (c *memMergeTxnCursor) nextKV() error {
 	var err error
 	for {
 		if c.kvcur == nil {
@@ -169,7 +216,7 @@ func (c *RcTxnCursor) nextKV() error {
 	}
 }
 
-func (c *RcTxnCursor) nextMem() {
+func (c *memMergeTxnCursor) nextMem() {
 	if c.memcur == nil {
 		return
 	}
@@ -181,7 +228,7 @@ func (c *RcTxnCursor) nextMem() {
 	}
 }
 
-func (c *RcTxnCursor) Next() (skey []byte, sval []byte, err error) {
+func (c *memMergeTxnCursor) Next() (skey []byte, sval []byte, err error) {
 	if c.memcur == nil && c.kvcur == nil {
 		return
 	} else if c.memcur == nil {
@@ -218,7 +265,7 @@ func (c *RcTxnCursor) Next() (skey []byte, sval []byte, err error) {
 	return
 }
 
-func (c *RcTxnCursor) compare(l, r *kv.KVPair) int {
+func (c *memMergeTxnCursor) compare(l, r *kv.KVPair) int {
 	if r.Key == nil {
 		return -1
 	}

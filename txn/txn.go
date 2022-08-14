@@ -23,6 +23,7 @@ type KVCfOperation interface {
 type KVOperation interface {
 	Batch(muts []kv.Mutation) error
 	Get(key []byte) ([]byte, error)
+	BatchGet(keys [][]byte) ([]kv.KVPair, error)
 	Scan(start []byte, end []byte, limit int) ([]kv.KVPair, error)
 }
 
@@ -37,6 +38,8 @@ type Txn interface {
 	Rollback() error
 	Set(key []byte, value []byte) error
 	Get(key []byte) (value []byte, err error)
+	BatchGet(keys [][]byte) ([]kv.KVPair, error)
+	BatchSet(kvs []kv.KVPair) error
 	Delete(key []byte) error
 	Cursor() (Cursor, error)
 }
