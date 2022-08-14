@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/blacktear23/bolt"
@@ -61,7 +60,6 @@ func (d *DiskKV) PutKeyValue(key []byte, value []byte) error {
 
 func (d *DiskKV) queryAppliedIndex() (uint64, error) {
 	val, err := d.GetKey([]byte(appliedIndexKey))
-	log.Printf("[DEBUG] %v, %v", val, err)
 	if err != nil {
 		return 0, err
 	}
@@ -124,249 +122,6 @@ func (d *DiskKV) Lookup(q interface{}) (interface{}, error) {
 	return nil, ErrUnkonwnQueryOperation
 }
 
-func (d *DiskKV) processCfGet(query *Query) (*QueryResult, error) {
-	ret := &QueryResult{}
-	cfName, err := d.checkColumnFamily(query.Cf)
-	if err != nil {
-		return ret, err
-	}
-	err = d.db.View(func(txn *bolt.Tx) error {
-		cfBucket := txn.Bucket(cfName)
-		for _, key := range query.Keys {
-			var val []byte = nil
-			if cfBucket != nil {
-				val = cfBucket.Get(key)
-			}
-			ret.KVS = append(ret.KVS, buildKVP(key, val, query.Op))
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func (d *DiskKV) processGet(query *Query) (*QueryResult, error) {
-	ret := &QueryResult{}
-	err := d.db.View(func(txn *bolt.Tx) error {
-		bucket := txn.Bucket(d.bucketName)
-		if bucket == nil {
-			return ErrBucketNotExists
-		}
-		for _, key := range query.Keys {
-			val := bucket.Get(key)
-			ret.KVS = append(ret.KVS, buildKVP(key, val, query.Op))
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func (d *DiskKV) processScan(query *Query) (*QueryResult, error) {
-	// Scan for [Start, End)
-	ret := &QueryResult{}
-
-	err := d.db.View(func(txn *bolt.Tx) error {
-		bucket := txn.Bucket(d.bucketName)
-		if bucket == nil {
-			return ErrBucketNotExists
-		}
-		c := bucket.Cursor()
-		// Check for first result
-		k, v := c.Seek(query.Start)
-		if k == nil {
-			// Nothing
-			return nil
-		} else if keyCompare(k, query.End) >= 0 {
-			// Next greater or equals than end key just return nothing
-			return nil
-		}
-		ret.AddKVPair(k, v, query.Op)
-
-		// Check for rest results
-		for i := 1; i < query.Limit; i++ {
-			k, v = c.Next()
-			if k == nil {
-				// Nothing
-				return nil
-			} else if keyCompare(k, query.End) >= 0 {
-				// Next greater or equals than end key just return nothing
-				return nil
-			}
-			ret.AddKVPair(k, v, query.Op)
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func (d *DiskKV) processCfScan(query *Query) (*QueryResult, error) {
-	// Scan for [Start, End)
-	ret := &QueryResult{}
-	cfName, err := d.checkColumnFamily(query.Cf)
-	if err != nil {
-		return ret, err
-	}
-	err = d.db.View(func(txn *bolt.Tx) error {
-		cfBucket := txn.Bucket(cfName)
-		if cfBucket == nil {
-			// cf not exists just return empty list
-			return nil
-		}
-		c := cfBucket.Cursor()
-		// Check for first result
-		k, v := c.Seek(query.Start)
-		if k == nil {
-			// Nothing
-			return nil
-		} else if keyCompare(k, query.End) >= 0 {
-			// Next greater or equals than end key just return nothing
-			return nil
-		}
-		i := 0
-		if sameLen(k, query.End, query.SameLen) {
-			ret.AddKVPair(k, v, query.Op)
-			i++
-		}
-
-		// Check for rest results
-		for i < query.Limit {
-			k, v = c.Next()
-			if k == nil {
-				// Nothing
-				return nil
-			} else if keyCompare(k, query.End) >= 0 {
-				// Next greater or equals than end key just return nothing
-				return nil
-			}
-			if sameLen(k, query.End, query.SameLen) {
-				ret.AddKVPair(k, v, query.Op)
-				i++
-			}
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func (d *DiskKV) processCfReverseScan(query *Query) (*QueryResult, error) {
-	// Scan for [Start, End]
-	ret := &QueryResult{}
-	cfName, err := d.checkColumnFamily(query.Cf)
-	if err != nil {
-		return ret, err
-	}
-	err = d.db.View(func(txn *bolt.Tx) error {
-		cfBucket := txn.Bucket(cfName)
-		if cfBucket == nil {
-			// cf not exists just return empty list
-			return nil
-		}
-		c := cfBucket.Cursor()
-		i := 0
-		// Check for last result
-		k, v := c.Seek(query.End)
-		if k == nil {
-			// Do nothing
-		} else if keyCompare(k, query.End) <= 0 {
-			if sameLen(k, query.End, query.SameLen) {
-				ret.AddKVPair(k, v, query.Op)
-				i++
-			}
-		}
-		for i < query.Limit {
-			k, v = c.Prev()
-			if k == nil {
-				// Nothing
-				return nil
-			} else if keyCompare(k, query.Start) < 0 {
-				return nil
-			}
-			if sameLen(k, query.Start, query.SameLen) {
-				ret.AddKVPair(k, v, query.Op)
-				i++
-			}
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func (d *DiskKV) processMvccGet(query *Query) (*QueryResult, error) {
-	ret := &QueryResult{}
-	err := d.db.View(func(txn *bolt.Tx) error {
-		mvccTxn := mvcc.NewTwoCFMvcc(txn)
-		for _, key := range query.Keys {
-			val, err := mvccTxn.Get(query.Version, key)
-			if err != nil && !mvcc.IsKeyNotFoundError(err) {
-				return err
-			}
-			ret.KVS = append(ret.KVS, buildKVP(key, val, query.Op))
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func (d *DiskKV) processMvccScan(query *Query) (*QueryResult, error) {
-	ret := &QueryResult{}
-	err := d.db.View(func(txn *bolt.Tx) error {
-		mvccTxn := mvcc.NewTwoCFMvcc(txn)
-		c := mvccTxn.Cursor(query.Version)
-		// Check for first result
-		k, v := c.Seek(query.Start)
-		if k == nil {
-			// Nothing
-			return nil
-		} else if keyCompare(k, query.End) >= 0 {
-			// Next greater or equals than end key just return nothing
-			return nil
-		}
-		ret.AddKVPair(k, v, query.Op)
-
-		// CHeck for rest results
-		for i := 1; i < query.Limit; i++ {
-			k, v = c.Next()
-			if k == nil {
-				// Nothing
-				return nil
-			} else if keyCompare(k, query.End) >= 0 {
-				// Next greater or equals than end key just return nothing
-				return nil
-			}
-			ret.AddKVPair(k, v, query.Op)
-		}
-		return nil
-	})
-	if err == nil && d.closed {
-		panic("lookup returned valid result when DiskKV is already closed")
-	}
-	return ret, err
-}
-
-func sameLen(val1 []byte, val2 []byte, sameLen bool) bool {
-	if sameLen {
-		return len(val1) == len(val2)
-	}
-	return true
-}
-
 func keyCompare(val1 []byte, val2 []byte) int {
 	if val2 == nil {
 		return -1
@@ -388,27 +143,14 @@ func (d *DiskKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	if d.closed {
 		panic("update called after Close()")
 	}
-	err := d.db.Update(func(txn *bolt.Tx) error {
-		bucket := txn.Bucket(d.bucketName)
-		if bucket == nil {
-			return ErrBucketNotExists
+	for idx, ent := range ents {
+		result, err := d.processEntry(ent)
+		if err != nil {
+			return nil, err
 		}
-		for idx, e := range ents {
-			mutations := make([]Mutation, 0, 10)
-			if err := json.Unmarshal(e.Cmd, &mutations); err != nil {
-				panic(err)
-			}
-			result, perr := d.processMutations(txn, bucket, mutations)
-			if perr != nil {
-				return perr
-			}
-			ents[idx].Result = sm.Result{Value: result}
-		}
-		// save the applied index to the DB.
-		appliedIndex := make([]byte, 8)
-		binary.LittleEndian.PutUint64(appliedIndex, ents[len(ents)-1].Index)
-		return bucket.Put([]byte(appliedIndexKey), appliedIndex)
-	})
+		ents[idx].Result = result
+	}
+	err := d.updateAppliedIndex(ents[len(ents)-1].Index)
 	if err != nil {
 		return nil, err
 	}
@@ -416,8 +158,48 @@ func (d *DiskKV) Update(ents []sm.Entry) ([]sm.Entry, error) {
 		panic("lastApplied not moving forward")
 	}
 	d.lastApplied = ents[len(ents)-1].Index
-	// log.Println("[I] End Update")
 	return ents, nil
+}
+
+func (d *DiskKV) updateAppliedIndex(idx uint64) error {
+	return d.db.Update(func(txn *bolt.Tx) error {
+		bucket := txn.Bucket(d.bucketName)
+		if bucket == nil {
+			return ErrBucketNotExists
+		}
+		appliedIndex := make([]byte, 8)
+		binary.LittleEndian.PutUint64(appliedIndex, idx)
+		return bucket.Put([]byte(appliedIndexKey), appliedIndex)
+	})
+}
+
+func (d *DiskKV) processEntry(ent sm.Entry) (sm.Result, error) {
+	var result sm.Result
+	err := d.db.Update(func(txn *bolt.Tx) error {
+		bucket := txn.Bucket(d.bucketName)
+		if bucket == nil {
+			return ErrBucketNotExists
+		}
+		mutations := make([]Mutation, 0, 10)
+		if err := json.Unmarshal(ent.Cmd, &mutations); err != nil {
+			panic(err)
+		}
+		ret, perr := d.processMutations(txn, bucket, mutations)
+		if perr != nil && !mvcc.IsKeyLockedError(perr) {
+			return perr
+		}
+		result = sm.Result{Value: ret}
+		if mvcc.IsKeyLockedError(perr) {
+			// Is key locked error just rollback
+			return perr
+		}
+		return nil
+	})
+	if mvcc.IsKeyLockedError(err) {
+		// If key locked just return result and no error
+		return result, nil
+	}
+	return result, err
 }
 
 func (d *DiskKV) processMutations(txn *bolt.Tx, bucket *bolt.Bucket, muts []Mutation) (uint64, error) {
@@ -429,7 +211,7 @@ func (d *DiskKV) processMutations(txn *bolt.Tx, bucket *bolt.Bucket, muts []Muta
 		switch mut.Op {
 		case CF_PUT, CF_DEL:
 			result, err = d.processCFMutation(txn, mut)
-		case MVCC_SET, MVCC_DEL:
+		case MVCC_SET, MVCC_DEL, MVCC_LOCK, MVCC_UNLOCK, MVCC_UNLOCK_FORCE:
 			result, err = d.processMvccMutation(txn, mut)
 		default:
 			result, err = d.processMutation(bucket, mut)
@@ -437,75 +219,6 @@ func (d *DiskKV) processMutations(txn *bolt.Tx, bucket *bolt.Bucket, muts []Muta
 		if result != RESULT_OK {
 			return result, err
 		}
-	}
-	return RESULT_OK, nil
-}
-
-func (d *DiskKV) processMutation(bucket *bolt.Bucket, mut Mutation) (uint64, error) {
-	var err error
-	switch mut.Op {
-	case PUT:
-		err = bucket.Put(mut.Key, mut.Value)
-	case DEL:
-		err = bucket.Delete(mut.Key)
-	case CAS:
-		cval := bucket.Get(mut.Key)
-		// Compare for nil
-		if cval == nil && mut.Value != nil {
-			return RESULT_FAIL, nil
-		} else if cval != nil && mut.Value == nil {
-			return RESULT_FAIL, nil
-		}
-		if !bytes.Equal(cval, mut.Value) {
-			return RESULT_FAIL, nil
-		}
-		err = bucket.Put(mut.Key, mut.NewValue)
-	}
-	if err != nil {
-		return RESULT_ERR, err
-	}
-	return RESULT_OK, nil
-}
-
-func (d *DiskKV) processCFMutation(txn *bolt.Tx, mut Mutation) (uint64, error) {
-	var (
-		err      error
-		cfbucket *bolt.Bucket
-		cfName   []byte
-	)
-	cfName, err = d.checkColumnFamily(mut.Cf)
-	if err != nil {
-		return RESULT_ERR, err
-	}
-	cfbucket, err = txn.CreateBucketIfNotExists(cfName)
-	if err != nil {
-		return RESULT_ERR, err
-	}
-	switch mut.Op {
-	case CF_PUT:
-		err = cfbucket.Put(mut.Key, mut.Value)
-	case CF_DEL:
-		err = cfbucket.Delete(mut.Key)
-	}
-	if err != nil {
-		return RESULT_ERR, err
-	}
-	return RESULT_OK, nil
-}
-
-func (d *DiskKV) processMvccMutation(txn *bolt.Tx, mut Mutation) (uint64, error) {
-	var (
-		err error
-	)
-	mvccTxn := mvcc.NewTwoCFMvcc(txn)
-	switch mut.Op {
-	case MVCC_SET:
-		err = mvccTxn.Set(mut.Version, mut.Key, mut.Value)
-	case MVCC_DEL:
-		err = mvccTxn.Delete(mut.Version, mut.Key)
-	}
-	if err != nil {
-		return RESULT_ERR, err
 	}
 	return RESULT_OK, nil
 }

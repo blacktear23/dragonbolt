@@ -82,7 +82,13 @@ func (db *MemDB) addmut(op int, key []byte, value []byte) {
 	db.muts = append(db.muts, mut)
 }
 
-func (db *MemDB) GetMutations() []kv.Mutation {
+func (db *MemDB) GetMutations(ver uint64) []kv.Mutation {
+	if ver == 0 {
+		return db.muts
+	}
+	for i, _ := range db.muts {
+		db.muts[i].Version = ver
+	}
 	return db.muts
 }
 

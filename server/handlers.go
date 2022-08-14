@@ -10,37 +10,35 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 	switch cmd {
 	case "command":
 		return c.handleCmd(args)
+	case "ping":
+		return protocol.NewSimpleString("PONG")
+	case "config":
+		return protocol.NewSimpleString("OK")
 	case "get":
 		return c.handleGet(args)
 	case "set":
 		return c.handleSet(args)
 	case "del":
 		return c.handleDel(args)
-	case "ping":
-		return protocol.NewSimpleString("PONG")
-	case "config":
-		return protocol.NewSimpleString("OK")
-	case "inc", "incr":
-		return c.handleIncDec(args, 1)
-	case "dec", "decr":
-		return c.handleIncDec(args, -1)
-	case "tso":
-		return c.handleTSO(args)
-	case "scan":
-		return c.handleScan(args)
 	case "mget":
 		return c.handleMget(args)
 	case "mset":
 		return c.handleMset(args)
-	case "cfset":
+	case "inc", "incr":
+		return c.handleIncDec(args, 1)
+	case "dec", "decr":
+		return c.handleIncDec(args, -1)
+	case "scan":
+		return c.handleScan(args)
+	case "cf.set":
 		return c.handleCfSet(args)
-	case "cfget":
+	case "cf.get":
 		return c.handleCfGet(args)
-	case "cfdel":
+	case "cf.del":
 		return c.handleCfDel(args)
-	case "cfscan":
+	case "cf.scan":
 		return c.handleCfScan(args, false)
-	case "cfrscan":
+	case "cf.rscan":
 		return c.handleCfScan(args, true)
 	case "begin", "txn.begin":
 		return c.handleBegin(args)
@@ -56,6 +54,10 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleTxnDelete(args)
 	case "tscan", "txn.scan":
 		return c.handleTxnScan(args)
+	case "tlock", "txn.lock":
+		return c.handleTxnLock(args)
+	case "tunlock", "txn.unlock":
+		return c.handleTxnUnlock(args)
 	case "commit", "txn.commit":
 		return c.handleCommit(args)
 	case "rollback", "txn.rollback":

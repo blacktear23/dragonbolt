@@ -7,10 +7,15 @@ import (
 
 var (
 	ErrKeyNotFound = errors.New("Key Not Found")
+	ErrKeyLocked   = errors.New("Key Is Locked")
 )
 
 func IsKeyNotFoundError(err error) bool {
 	return err == ErrKeyNotFound
+}
+
+func IsKeyLockedError(err error) bool {
+	return err == ErrKeyLocked
 }
 
 type MvccDB interface {
@@ -18,6 +23,8 @@ type MvccDB interface {
 	Set(ver uint64, key []byte, val []byte) error
 	Delete(ver uint64, key []byte) error
 	Cursor(ver uint64) MvccCursor
+	LockKey(ver uint64, key []byte) error
+	UnlockKey(ver uint64, key []byte, force bool) error
 }
 
 type MvccCursor interface {
@@ -63,4 +70,11 @@ func decodeMvccValue(value []byte) (byte, []byte) {
 		return 0, nil
 	}
 	return value[0], value[1:]
+}
+
+func encodeLockValue(ver uint64) []byte {
+	ret := make([]byte, 9)
+	ret[0] = KEY_LOCK
+	binary.BigEndian.PutUint64(ret[1:], ver)
+	return ret
 }

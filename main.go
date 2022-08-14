@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/blacktear23/dragonbolt/kv"
@@ -42,33 +44,39 @@ type RequestType uint64
 const (
 	PUT RequestType = iota
 	GET
+	UNLOCK
 )
-
-func init() {
-	// config.Soft.NodeReloadMillisecond = 200
-}
 
 func parseCommand(msg string) (RequestType, string, string, bool) {
 	parts := strings.Split(strings.TrimSpace(msg), " ")
-	if len(parts) == 0 || (parts[0] != "put" && parts[0] != "get") {
+	if len(parts) == 0 {
 		return PUT, "", "", false
 	}
-	if parts[0] == "put" {
+	switch parts[0] {
+	case "unlock":
+		if len(parts) != 2 {
+			return UNLOCK, "", "", false
+		}
+		return UNLOCK, parts[1], "", true
+	case "put":
 		if len(parts) != 3 {
 			return PUT, "", "", false
 		}
 		return PUT, parts[1], parts[2], true
+	case "get":
+		if len(parts) != 2 {
+			return GET, "", "", false
+		}
+		return GET, parts[1], "", true
 	}
-	if len(parts) != 2 {
-		return GET, "", "", false
-	}
-	return GET, parts[1], "", true
+	return PUT, "", "", false
 }
 
 func printUsage() {
 	fmt.Fprintf(os.Stdout, "Usage - \n")
 	fmt.Fprintf(os.Stdout, "put key value\n")
 	fmt.Fprintf(os.Stdout, "get key\n")
+	fmt.Fprintf(os.Stdout, "unlock key\n")
 }
 
 func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonboat.NodeHost, initMembers map[uint64]string, replicaID uint64) {
@@ -86,6 +94,26 @@ func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonbo
 			}
 		} else {
 			log.Println("Create DB", db.Name, "Shard ID", db.ShardID, "got error:", err)
+		}
+	}
+}
+
+type SignalCallback func()
+
+func WaitSignal(onReload, onExit SignalCallback) {
+	var sigChan = make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGHUP)
+	for sig := range sigChan {
+		if sig == syscall.SIGHUP {
+			// Reload resolve rule file
+			if onReload != nil {
+				onReload()
+			}
+		} else {
+			if onExit != nil {
+				onExit()
+			}
+			log.Fatal("Server Exit\n")
 		}
 	}
 }
@@ -200,6 +228,24 @@ func main() {
 					} else {
 						os.Stdout.Write([]byte("> "))
 					}
+				} else if rt == UNLOCK {
+					muts := []kv.Mutation{
+						kv.Mutation{
+							Op:  kv.MVCC_UNLOCK_FORCE,
+							Key: []byte(key),
+						},
+					}
+					data, err := json.Marshal(muts)
+					if err != nil {
+						panic(err)
+					}
+					ret, err := nh.SyncPropose(ctx, cs, data)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "SyncPropose returned error %v\n", err)
+					} else {
+						os.Stdout.WriteString(fmt.Sprintf("%+v\n", ret))
+						os.Stdout.Write([]byte("> "))
+					}
 				} else {
 					result, err := nh.SyncRead(ctx, exampleShardID, []byte(key))
 					if err != nil {
@@ -225,7 +271,7 @@ func main() {
 
 	var rs *server.RedisServer = nil
 	if redisAddr != "" {
-		rs := server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer, sm)
+		rs = server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer, sm)
 		rs.Run()
 		log.Println("Start Redis Server for", redisAddr)
 	}
@@ -279,11 +325,11 @@ func main() {
 					os.Stdout.WriteString("Profile Ended\n> ")
 				}
 			} else if s == "exit\n" {
-				raftStopper.Stop()
-				nh.Close()
 				if rs != nil {
 					rs.Close()
 				}
+				raftStopper.Stop()
+				nh.Close()
 				return
 			} else {
 				ch <- s
@@ -291,5 +337,12 @@ func main() {
 		}
 	})
 	printUsage()
-	raftStopper.Wait()
+	// raftStopper.Wait()
+	WaitSignal(nil, func() {
+		if rs != nil {
+			rs.Close()
+		}
+		raftStopper.Stop()
+		nh.Close()
+	})
 }

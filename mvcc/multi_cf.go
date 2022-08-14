@@ -2,6 +2,7 @@ package mvcc
 
 import (
 	"bytes"
+	"encoding/binary"
 
 	"github.com/blacktear23/bolt"
 )
@@ -11,6 +12,9 @@ const (
 
 	OP_SET byte = 1
 	OP_DEL byte = 2
+
+	KEY_LOCK   byte = 'L'
+	KEY_UNLOCK byte = 'Y'
 )
 
 var (
@@ -51,13 +55,68 @@ func (m *TwoCFMvcc) Set(ver uint64, key []byte, value []byte) error {
 	if err != nil {
 		return err
 	}
-	err = kb.Put(key, cfKeysValue)
-	if err != nil {
-		return err
+	kv := kb.Get(key)
+	if m.checkLocked(ver, kv) {
+		return ErrKeyLocked
+	}
+	if kv == nil {
+		// Not exists just set initial key status
+		err = kb.Put(key, cfKeysValue)
+		if err != nil {
+			return err
+		}
 	}
 	ekey := encodeMvccKey(ver, key)
 	eval := encodeMvccValue(OP_SET, value)
 	return vb.Put(ekey, eval)
+}
+
+func (m *TwoCFMvcc) checkLocked(ver uint64, val []byte) bool {
+	if len(val) != 9 || val[0] == KEY_UNLOCK {
+		return false
+	}
+	// Key locked, check version
+	lockVer := binary.BigEndian.Uint64(val[1:])
+	if ver == lockVer {
+		// Mean self locked should not exclude
+		return false
+	}
+	return true
+}
+
+// Return
+//
+//	bool:  locked or not
+//	error: error
+func (m *TwoCFMvcc) LockKey(ver uint64, key []byte) error {
+	kb, _, err := m.ensureBuckets()
+	if err != nil {
+		return err
+	}
+	kv := kb.Get(key)
+	if m.checkLocked(ver, kv) {
+		return ErrKeyLocked
+	}
+	lockVal := encodeLockValue(ver)
+	err = kb.Put(key, lockVal)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *TwoCFMvcc) UnlockKey(ver uint64, key []byte, force bool) error {
+	kb, _, err := m.ensureBuckets()
+	if err != nil {
+		return err
+	}
+	if !force {
+		kv := kb.Get(key)
+		if m.checkLocked(ver, kv) {
+			return ErrKeyLocked
+		}
+	}
+	return kb.Put(key, cfKeysValue)
 }
 
 func (m *TwoCFMvcc) Delete(ver uint64, key []byte) error {
@@ -65,10 +124,13 @@ func (m *TwoCFMvcc) Delete(ver uint64, key []byte) error {
 	if err != nil {
 		return err
 	}
-	cv := kb.Get(key)
-	if cv == nil {
+	kv := kb.Get(key)
+	if kv == nil {
 		// Not found no need to update value cf
 		return nil
+	}
+	if m.checkLocked(ver, kv) {
+		return ErrKeyLocked
 	}
 	ekey := encodeMvccKey(ver, key)
 	eval := encodeMvccValue(OP_DEL, nil)
@@ -92,22 +154,7 @@ func (m *TwoCFMvcc) readVersion(ver uint64, key []byte) ([]byte, error) {
 	c := vb.Cursor()
 	verKey := encodeMvccKey(ver, key)
 	ek, ev := c.Seek(verKey)
-	if !bytes.HasPrefix(ek, key) {
-		// Not found
-		return nil, ErrKeyNotFound
-	}
-	dver := decodeMvccKeyVersion(ek)
-	if dver > 0 && ver >= dver {
-		dop, dv := decodeMvccValue(ev)
-		if dop == OP_DEL {
-			return nil, ErrKeyNotFound
-		} else {
-			return dv, nil
-		}
-	}
-	// Seek next
 	for {
-		ek, ev = c.Next()
 		if !bytes.HasPrefix(ek, key) {
 			// Not Found
 			break
@@ -121,6 +168,7 @@ func (m *TwoCFMvcc) readVersion(ver uint64, key []byte) ([]byte, error) {
 				return dv, nil
 			}
 		}
+		ek, ev = c.Next()
 	}
 	return nil, ErrKeyNotFound
 }
@@ -198,20 +246,9 @@ func (c *twoCFMvccCursor) Next() ([]byte, []byte) {
 		// No cursors means not seek just return nils
 		return nil, nil
 	}
-	kkey, _ := c.kbc.Next()
-	if kkey == nil {
-		// No keys found set finish and return
-		c.finish = true
-		return nil, nil
-	}
-	mval, err := c.readValue(kkey)
-	if err == nil {
-		// Means found value, just return
-		return kkey, mval
-	}
 	// Should iterate next
 	for {
-		kkey, _ = c.kbc.Next()
+		kkey, _ := c.kbc.Next()
 		if kkey == nil {
 			// Not found keys return nils
 			c.finish = true
@@ -228,21 +265,7 @@ func (c *twoCFMvccCursor) Next() ([]byte, []byte) {
 func (c *twoCFMvccCursor) readValue(key []byte) ([]byte, error) {
 	verKey := encodeMvccKey(c.ver, key)
 	ek, ev := c.vbc.Seek(verKey)
-	if !bytes.HasPrefix(ek, key) {
-		return nil, ErrKeyNotFound
-	}
-	dver := decodeMvccKeyVersion(ek)
-	if dver > 0 && c.ver >= dver {
-		dop, dv := decodeMvccValue(ev)
-		if dop == OP_DEL {
-			return nil, ErrKeyNotFound
-		} else {
-			return dv, nil
-		}
-	}
-	// Seek next
 	for {
-		ek, ev = c.vbc.Next()
 		if !bytes.HasPrefix(ek, key) {
 			// Not found
 			break
@@ -256,6 +279,7 @@ func (c *twoCFMvccCursor) readValue(key []byte) ([]byte, error) {
 				return dv, nil
 			}
 		}
+		ek, ev = c.vbc.Next()
 	}
 	return nil, ErrKeyNotFound
 }

@@ -15,19 +15,21 @@ var (
 )
 
 type MemMergeTxn struct {
-	putOp int
-	delOp int
-	ver   uint64
-	ops   KVOperation
-	memdb *MemDB
+	putOp      int
+	delOp      int
+	ver        uint64
+	ops        KVOperation
+	memdb      *MemDB
+	lockedKeys map[string]bool
 }
 
 func NewMemMergeTxn(kvOps KVOperation, putOp int, delOp int, ver uint64) *MemMergeTxn {
 	return &MemMergeTxn{
-		putOp: putOp,
-		delOp: delOp,
-		ver:   ver,
-		ops:   kvOps,
+		putOp:      putOp,
+		delOp:      delOp,
+		ver:        ver,
+		ops:        kvOps,
+		lockedKeys: make(map[string]bool),
 	}
 }
 
@@ -36,18 +38,56 @@ func (t *MemMergeTxn) Begin() error {
 	return nil
 }
 
-func (t *MemMergeTxn) Commit() error {
+func (t *MemMergeTxn) Commit(ver uint64) error {
 	if t.memdb == nil {
 		return ErrNotBegin
 	}
-	muts := t.memdb.GetMutations()
+	muts := t.memdb.GetMutations(ver)
 	err := t.ops.Batch(muts)
+	if len(t.lockedKeys) > 0 {
+		t.cleanKeys()
+	}
 	t.memdb = nil
 	return err
 }
 
+func (t *MemMergeTxn) LockKey(key []byte) error {
+	err := t.lockKey(key)
+	if err != nil {
+		return err
+	}
+	t.lockedKeys[string(key)] = true
+	return nil
+}
+
+func (t *MemMergeTxn) UnlockKey(key []byte) error {
+	err := t.unlockKey(key)
+	if err != nil {
+		return err
+	}
+	delete(t.lockedKeys, string(key))
+	return nil
+}
+
+func (t *MemMergeTxn) lockKey(key []byte) error {
+	return t.ops.LockKey(key)
+}
+
+func (t *MemMergeTxn) unlockKey(key []byte) error {
+	return t.ops.UnlockKey(key)
+}
+
+func (t *MemMergeTxn) cleanKeys() {
+	for skey, _ := range t.lockedKeys {
+		t.unlockKey([]byte(skey))
+	}
+}
+
 func (t *MemMergeTxn) Rollback() error {
 	// Just drop memdb
+	if len(t.lockedKeys) > 0 {
+		t.cleanKeys()
+	}
 	t.memdb = nil
 	return nil
 }

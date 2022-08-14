@@ -16,6 +16,7 @@ import (
 )
 
 type rclient struct {
+	name   string
 	conn   net.Conn
 	rs     *RedisServer
 	txn    txn.Txn
@@ -195,4 +196,15 @@ func (c *rclient) getCommand(cmd protocol.Encodable) (string, error) {
 
 func (c *rclient) getTso() (uint64, error) {
 	return c.rs.tsoSrv.GetTSO()
+}
+
+func (c *rclient) Close() {
+	log.Println("clean connection resources")
+	if c.txn != nil {
+		err := c.txn.Rollback()
+		if err != nil {
+			log.Println("close connection and rollback transaction got error:", err)
+		}
+	}
+	c.conn.Close()
 }

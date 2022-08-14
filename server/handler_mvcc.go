@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/blacktear23/dragonbolt/kv"
@@ -17,11 +18,15 @@ const (
 
 var (
 	_ txn.KVOperation = (*mvccTxnOps)(nil)
+
+	ErrKeyLocked   = errors.New("Key is locked")
+	ErrWrongResult = errors.New("Wrong result")
 )
 
 type mvccTxnOps struct {
 	rc         *rclient
 	isoLevel   int
+	txnVer     uint64
 	readTxnVer uint64
 }
 
@@ -30,7 +35,10 @@ func (o *mvccTxnOps) Batch(muts []kv.Mutation) error {
 	if err != nil {
 		return nil
 	}
-	_, err = o.rc.trySyncPropose(data, 100)
+	ret, err := o.rc.trySyncPropose(data, 100)
+	if ret.Value == kv.RESULT_KEY_LOCKED {
+		return ErrKeyLocked
+	}
 	return err
 }
 
@@ -78,14 +86,68 @@ func (o *mvccTxnOps) Scan(start []byte, end []byte, limit int) ([]kv.KVPair, err
 	return result.KVS, nil
 }
 
+func (o *mvccTxnOps) LockKey(key []byte) error {
+	muts := []kv.Mutation{
+		kv.Mutation{
+			Op:      kv.MVCC_LOCK,
+			Key:     key,
+			Version: o.txnVer,
+		},
+	}
+	data, err := json.Marshal(muts)
+	if err != nil {
+		return err
+	}
+	resp, err := o.rc.trySyncPropose(data, 100)
+	if err != nil {
+		return err
+	}
+	switch resp.Value {
+	case kv.RESULT_OK:
+		return nil
+	case kv.RESULT_KEY_LOCKED:
+		return ErrKeyLocked
+	default:
+		return ErrWrongResult
+	}
+}
+
+func (o *mvccTxnOps) UnlockKey(key []byte) error {
+	muts := []kv.Mutation{
+		kv.Mutation{
+			Op:      kv.MVCC_UNLOCK,
+			Key:     key,
+			Version: o.txnVer,
+		},
+	}
+	data, err := json.Marshal(muts)
+	if err != nil {
+		return err
+	}
+	resp, err := o.rc.trySyncPropose(data, 100)
+	if err != nil {
+		return err
+	}
+	switch resp.Value {
+	case kv.RESULT_OK:
+		return nil
+	case kv.RESULT_KEY_LOCKED:
+		return ErrKeyLocked
+	default:
+		return ErrWrongResult
+	}
+}
+
 func (c *rclient) newMvccTxnOps(isoLevel int, txnVer uint64) *mvccTxnOps {
+	readTxnVer := txnVer
 	if isoLevel == ISO_LEVEL_RC {
-		txnVer = mvcc.MAX_UINT64
+		readTxnVer = mvcc.MAX_UINT64
 	}
 	return &mvccTxnOps{
 		rc:         c,
 		isoLevel:   isoLevel,
-		readTxnVer: txnVer,
+		txnVer:     txnVer,
+		readTxnVer: readTxnVer,
 	}
 }
 
@@ -125,7 +187,11 @@ func (c *rclient) handleCommit(args []protocol.Encodable) protocol.Encodable {
 	if c.txn == nil {
 		return protocol.NewSimpleError("Transaction not begin")
 	}
-	err := c.txn.Commit()
+	commitVer, err := c.getTso()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Internal Error: %v", err)
+	}
+	err = c.txn.Commit(commitVer)
 	c.txn = nil
 	c.txnVer = 0
 	if err != nil {

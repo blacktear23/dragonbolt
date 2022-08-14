@@ -142,6 +142,9 @@ func (c *rclient) handleTxnScan(args []protocol.Encodable) protocol.Encodable {
 }
 
 func (c *rclient) handleTxnMset(args []protocol.Encodable) protocol.Encodable {
+	if c.txn == nil {
+		return protocol.NewSimpleError("Transaction not begin")
+	}
 	if len(args) < 2 || len(args)%2 != 0 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -167,6 +170,9 @@ func (c *rclient) handleTxnMset(args []protocol.Encodable) protocol.Encodable {
 }
 
 func (c *rclient) handleTxnMget(args []protocol.Encodable) protocol.Encodable {
+	if c.txn == nil {
+		return protocol.NewSimpleError("Transaction not begin")
+	}
 	if len(args) < 1 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -191,4 +197,40 @@ func (c *rclient) handleTxnMget(args []protocol.Encodable) protocol.Encodable {
 		}
 	}
 	return ret
+}
+
+func (c *rclient) handleTxnLock(args []protocol.Encodable) protocol.Encodable {
+	if c.txn == nil {
+		return protocol.NewSimpleError("Transaction not begin")
+	}
+	if len(args) < 1 {
+		return protocol.NewSimpleError("Need more arguments")
+	}
+	key, err := c.parseKey(args[0])
+	if err != nil {
+		return protocol.NewSimpleError(err.Error())
+	}
+	err = c.txn.LockKey(key)
+	if err != nil {
+		return protocol.NewSimpleError(err.Error())
+	}
+	return protocol.NewSimpleString("OK")
+}
+
+func (c *rclient) handleTxnUnlock(args []protocol.Encodable) protocol.Encodable {
+	if c.txn == nil {
+		return protocol.NewSimpleError("Transaction not begin")
+	}
+	if len(args) < 1 {
+		return protocol.NewSimpleError("Need more arguments")
+	}
+	key, err := c.parseKey(args[0])
+	if err != nil {
+		return protocol.NewSimpleError(err.Error())
+	}
+	err = c.txn.UnlockKey(key)
+	if err != nil {
+		return protocol.NewSimpleError(err.Error())
+	}
+	return protocol.NewSimpleString("OK")
 }

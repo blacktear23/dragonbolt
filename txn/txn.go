@@ -25,6 +25,8 @@ type KVOperation interface {
 	Get(key []byte) ([]byte, error)
 	BatchGet(keys [][]byte) ([]kv.KVPair, error)
 	Scan(start []byte, end []byte, limit int) ([]kv.KVPair, error)
+	LockKey(key []byte) error
+	UnlockKey(key []byte) error
 }
 
 type Cursor interface {
@@ -34,7 +36,7 @@ type Cursor interface {
 
 type Txn interface {
 	Begin() error
-	Commit() error
+	Commit(ver uint64) error
 	Rollback() error
 	Set(key []byte, value []byte) error
 	Get(key []byte) (value []byte, err error)
@@ -42,4 +44,6 @@ type Txn interface {
 	BatchSet(kvs []kv.KVPair) error
 	Delete(key []byte) error
 	Cursor() (Cursor, error)
+	LockKey(key []byte) error
+	UnlockKey(key []byte) error
 }

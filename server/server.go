@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/blacktear23/dragonbolt/kv"
@@ -26,6 +27,8 @@ type RedisServer struct {
 	ln       net.Listener
 	tsoSrv   *tso.TSOServer
 	sm       *store.StoreManager
+	conns    sync.Map
+	stop     bool
 }
 
 func NewRedisServer(addr string, nh *dragonboat.NodeHost, sid uint64, tsoServer *tso.TSOServer, sm *store.StoreManager) *RedisServer {
@@ -36,6 +39,7 @@ func NewRedisServer(addr string, nh *dragonboat.NodeHost, sid uint64, tsoServer 
 		timeout:  10 * time.Second,
 		tsoSrv:   tsoServer,
 		sm:       sm,
+		conns:    sync.Map{},
 	}
 }
 
@@ -54,9 +58,12 @@ func (rs *RedisServer) run() error {
 }
 
 func (rs *RedisServer) runListen(ln net.Listener) {
-	for {
+	for !rs.stop {
 		conn, err := ln.Accept()
 		if err != nil {
+			if rs.stop {
+				return
+			}
 			log.Println("Listen got error:", err)
 			continue
 		}
@@ -65,12 +72,21 @@ func (rs *RedisServer) runListen(ln net.Listener) {
 }
 
 func (rs *RedisServer) handleConn(conn net.Conn) {
-	defer conn.Close()
-	c := rclient{
+	c := &rclient{
+		name: conn.RemoteAddr().String(),
 		conn: conn,
 		rs:   rs,
 		sid:  rs.shardID,
 	}
+	log.Println("New connection:", c.name)
+	// Trace connections
+	rs.conns.Store(c.name, c)
+	// Clean connections
+	defer func(c *rclient) {
+		c.Close()
+		c.rs.conns.Delete(c.name)
+	}(c)
+
 	buf := make([]byte, 16384)
 	for {
 		n, err := conn.Read(buf)
@@ -146,7 +162,23 @@ func (rs *RedisServer) trySyncRead(shardID uint64, query *kv.Query, tryTimes int
 	return result.(*kv.QueryResult), err
 }
 
+func (rs *RedisServer) cleanResources() {
+	rs.conns.Range(func(key, val any) bool {
+		name, ok := key.(string)
+		if ok {
+			log.Println("Clean connection", name)
+			conn, ok := val.(*rclient)
+			if ok {
+				conn.Close()
+			}
+		}
+		return true
+	})
+}
+
 func (rs *RedisServer) Close() error {
+	rs.stop = true
+	rs.cleanResources()
 	if rs.ln != nil {
 		return rs.ln.Close()
 	}
