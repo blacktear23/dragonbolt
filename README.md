@@ -59,3 +59,28 @@ dragonbolt 使用 boltdb 作为基础的 Key-Value 存储，用 dragonboat 实�
 | txn.scan, tscan		| [start] [end] limit [limit]	| 扫描从 start 开始，到 end 结尾的 Key，并列出 limit 个 Key. <br/> 其中 end 和 limit [limit] 为可选参数 |
 | txn.commit, commit |					| 提交事务 |
 | txn.rollback, rollback |					| 回滚事务 |
+| txn.lock, tlock		| [key]				| 锁定 Key |
+| txn.unlock, tunlock	| [key]				| 解锁 Key |
+
+# 关于 DB
+
+一个 DB 为一个 boltdb 实例，不同的 DB 的数据分别存在不同的 boltdb 文件中。基本命令和事务命令所操作的数据都会存在一个 DB 中。
+
+当创建一个新的 DB 时，系统会自动创建多副本的 boltdb 实例。不同的 DB 之间使用不同的 Raft ShardID，所以多 DB 模式等同于启用了 Multi-Raft。
+
+# 关于 MVCC 和事务
+
+MVCC 基于 boltdb 的 Bucket 功能实现的。一个 MVCC 空间使用了 2 个 boltdb 的 Bucket：`cf:mvcc:keys` 和 `cf:mvcc:vals`。其中，`cf:mvcc:keys` 用来保存 Key 列表，同时维护锁。 `cf:mvcc:vals` 用来保存版本数据。
+
+MVCC 版本数据的编码为：
+
+* Key:   `| key (n bytes) | version (8 bytes) |`
+* Value: `| op (1 bytes) | data (n bytes) |`
+
+其中 version 为 uint64 big-endian 编码的版本号，版本号做了一个特殊操作，用 `UINT64_MAX - 当前版本号` 这样可以保证最新的数据会出现在最前面。
+
+Value 中的 op 用 1 字节来区分是数据还是删除。
+
+当事务开始时，会获取一个版本号，用来确定读取的快照，事务内的写操作会被服务器缓存在内存中，只有在事务提交的时候才会写入到 boltdb 中。在事务提交时，会获取一个提交版本号，事务内的写操作会被打上提交的版本号，通过 batch 提交的方式提交到 boltdb 中。
+
+RR 和 RC 隔离级别的差异只在于事务开始时，读快照的版本号是当前版本号，还是最大版本号（UINT64_MAX)。如果是最大版本号，就是 RC 隔离级别，如果是当前版本号就是 RR 隔离级别。
