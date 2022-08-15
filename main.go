@@ -48,6 +48,8 @@ const (
 	UNLOCK
 	GC
 	ADDNODE
+	DELNODE
+	NODES
 )
 
 func parseCommand(msg string) (RequestType, string, string, bool) {
@@ -81,6 +83,16 @@ func parseCommand(msg string) (RequestType, string, string, bool) {
 			return ADDNODE, "", "", false
 		}
 		return ADDNODE, parts[1], parts[2], true
+	case "delnode":
+		if len(parts) != 3 {
+			return DELNODE, "", "", false
+		}
+		return DELNODE, parts[1], parts[2], true
+	case "nodes":
+		if len(parts) != 2 {
+			return NODES, "", "", false
+		}
+		return NODES, parts[1], "", true
 	}
 	return PUT, "", "", false
 }
@@ -92,6 +104,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stdout, "gc ver\n")
 	fmt.Fprintf(os.Stdout, "unlock key\n")
 	fmt.Fprintf(os.Stdout, "addnode target replicaID\n")
+	fmt.Fprintf(os.Stdout, "delnode target replicaID\n")
+	fmt.Fprintf(os.Stdout, "nodes shardID\n")
 }
 
 func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonboat.NodeHost, initMembers map[uint64]string, replicaID uint64) {
@@ -105,7 +119,9 @@ func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonbo
 		if err == nil {
 			serr := stor.StartReplica(nh, initMembers, replicaID)
 			if serr != nil {
-				log.Println("Start Replica DB", db.Name, "Shard ID", db.ShardID, "got error:", err)
+				log.Println("Start Replica DB", db.Name, "Shard ID", db.ShardID, "got error:", serr)
+			} else {
+				log.Println("Start Replica DB", db.Name, "Shard ID", db.ShardID, "OK")
 			}
 		} else {
 			log.Println("Create DB", db.Name, "Shard ID", db.ShardID, "got error:", err)
@@ -258,7 +274,7 @@ func main() {
 					os.Stdout.Write([]byte("> "))
 					continue
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				if rt == PUT {
 					muts := []kv.Mutation{
 						kv.Mutation{
@@ -330,12 +346,75 @@ func main() {
 					}
 					if replicaID != 0 {
 						for _, shardID := range listAllShards(tsoServer) {
-							_, err = nh.RequestAddReplica(shardID, replicaID, target, 0, 60*time.Second)
+							lctx, lcancel := context.WithTimeout(context.Background(), 10*time.Second)
+							err = nh.SyncRequestAddReplica(lctx, shardID, replicaID, target, 0)
+							lcancel()
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "RequestAddReplica returned error %v\n", err)
+								fmt.Fprintf(os.Stderr, "Add Shard %d for Replica %d at %s returned error %v\n", shardID, replicaID, target, err)
 							} else {
-								os.Stdout.WriteString(fmt.Sprintf("Add Shard %d Replica %d OK", shardID, replicaID))
+								os.Stdout.WriteString(fmt.Sprintf("Add Shard %d for Replica %d at %s OK\n", shardID, replicaID, target))
 							}
+						}
+						os.Stdout.Write([]byte("> "))
+					} else {
+						os.Stdout.Write([]byte("> "))
+					}
+				} else if rt == DELNODE {
+					var (
+						target           = key
+						replicaID uint64 = 0
+						err       error
+					)
+					replicaID, err = strconv.ParseUint(val, 10, 64)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Invalid replica ID %v\n", err)
+						replicaID = 0
+					}
+					if replicaID != 0 {
+						for _, shardID := range listAllShards(tsoServer) {
+							err = nh.StopReplica(shardID, replicaID)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Stop Shard %d for Replica %d at %s returned error %v\n", shardID, replicaID, target, err)
+							}
+							lctx, lcancel := context.WithTimeout(context.Background(), 10*time.Second)
+							err = nh.SyncRemoveData(lctx, shardID, replicaID)
+							lcancel()
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Remove Shard %d data for Replica %d at %s returned error %v\n", shardID, replicaID, target, err)
+							}
+							lctx, lcancel = context.WithTimeout(context.Background(), 10*time.Second)
+							err = nh.SyncRequestDeleteReplica(lctx, shardID, replicaID, 0)
+							lcancel()
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "Delete Shard %d for Replica %d at %s returned error %v\n", shardID, replicaID, target, err)
+							} else {
+								os.Stdout.WriteString(fmt.Sprintf("Delete Shard %d for Replica %d at %s OK\n", shardID, replicaID, target))
+							}
+						}
+						os.Stdout.Write([]byte("> "))
+					} else {
+						os.Stdout.Write([]byte("> "))
+					}
+				} else if rt == NODES {
+					var (
+						shardID uint64 = 0
+						err     error
+					)
+					if key == "tso" {
+						shardID = tsoShardID
+					} else {
+						shardID, err = strconv.ParseUint(key, 10, 64)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "Invalid shard ID %v\n", err)
+							shardID = 0
+						}
+					}
+					if shardID != 0 {
+						membs, err := nh.SyncGetShardMembership(ctx, shardID)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "Get members returned error %v\n", err)
+						} else {
+							os.Stdout.WriteString(fmt.Sprintf("Members: %+v\n", membs.Nodes))
 						}
 						os.Stdout.Write([]byte("> "))
 					} else {
