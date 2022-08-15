@@ -30,6 +30,8 @@ type MvccDB interface {
 	Cursor(ver uint64) MvccCursor
 	LockKey(ver uint64, key []byte) error
 	UnlockKey(ver uint64, key []byte, force bool) error
+	GcScan(ver uint64) []*GCInfo
+	GcPurge(infos []*GCInfo) error
 }
 
 type MvccCursor interface {

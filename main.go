@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -45,6 +46,7 @@ const (
 	PUT RequestType = iota
 	GET
 	UNLOCK
+	GC
 )
 
 func parseCommand(msg string) (RequestType, string, string, bool) {
@@ -68,6 +70,11 @@ func parseCommand(msg string) (RequestType, string, string, bool) {
 			return GET, "", "", false
 		}
 		return GET, parts[1], "", true
+	case "gc":
+		if len(parts) != 2 {
+			return GC, "", "", false
+		}
+		return GC, parts[1], "", true
 	}
 	return PUT, "", "", false
 }
@@ -76,6 +83,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stdout, "Usage - \n")
 	fmt.Fprintf(os.Stdout, "put key value\n")
 	fmt.Fprintf(os.Stdout, "get key\n")
+	fmt.Fprintf(os.Stdout, "gc ver\n")
 	fmt.Fprintf(os.Stdout, "unlock key\n")
 }
 
@@ -145,12 +153,6 @@ func main() {
 			log.Fatal("Cannot create db dir", err)
 		}
 	}
-	sm := store.NewStoreManager(dbDir)
-	defer sm.Close()
-	stor, err := sm.CreateStore(exampleShardID)
-	if err != nil {
-		log.Fatal(err)
-	}
 	initMembers := make(map[uint64]string)
 	if !join {
 		for idx, v := range addresses {
@@ -184,12 +186,39 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	sm := store.NewStoreManager(dbDir)
+	defer sm.Close()
+
+	// Start TSO
+	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbDir, initMembers, exampleShardID+1, sm)
+	if err != nil {
+		log.Fatal("Start TSO Server error", err)
+	}
+	// Update for kv tso service for mvcc gc use
+	kv.SetTsoService(tsoServer)
+
+	// Start default DB
+	stor, err := sm.CreateStore(exampleShardID)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err := stor.StartReplica(nh, initMembers, uint64(replicaID), join); err != nil {
 		log.Fatal(err)
 	}
+
+	// Start Others DB
+	startRestStores(tsoServer, sm, nh, initMembers, uint64(replicaID))
+
+	var rs *server.RedisServer = nil
+	if redisAddr != "" {
+		rs = server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer, sm)
+		rs.Run()
+		log.Println("Start Redis Server for", redisAddr)
+	}
+
 	raftStopper := syncutil.NewStopper()
 	ch := make(chan string, 16)
-
 	raftStopper.RunWorker(func() {
 		cs := nh.GetNoOPSession(exampleShardID)
 		for {
@@ -246,6 +275,28 @@ func main() {
 						os.Stdout.WriteString(fmt.Sprintf("%+v\n", ret))
 						os.Stdout.Write([]byte("> "))
 					}
+				} else if rt == GC {
+					ver, err := strconv.ParseUint(key, 10, 64)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Invalid version %v\n", err)
+					} else {
+						muts := []kv.Mutation{
+							kv.Mutation{
+								Op:      kv.MVCC_GC,
+								Version: ver,
+							},
+						}
+						data, err := json.Marshal(muts)
+						if err != nil {
+							panic(err)
+						}
+						_, err = nh.SyncPropose(ctx, cs, data)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "SyncPropose returned error %v\n", err)
+						} else {
+							os.Stdout.Write([]byte("> "))
+						}
+					}
 				} else {
 					result, err := nh.SyncRead(ctx, exampleShardID, []byte(key))
 					if err != nil {
@@ -261,20 +312,6 @@ func main() {
 			}
 		}
 	})
-
-	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbDir, initMembers, exampleShardID+1, sm)
-	if err != nil {
-		log.Println("Start TSO Server error", err)
-	}
-
-	startRestStores(tsoServer, sm, nh, initMembers, uint64(replicaID))
-
-	var rs *server.RedisServer = nil
-	if redisAddr != "" {
-		rs = server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer, sm)
-		rs.Run()
-		log.Println("Start Redis Server for", redisAddr)
-	}
 
 	consoleStopper := syncutil.NewStopper()
 	consoleStopper.RunWorker(func() {

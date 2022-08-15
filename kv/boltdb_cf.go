@@ -1,12 +1,24 @@
 package kv
 
-import "github.com/blacktear23/bolt"
+import (
+	"github.com/blacktear23/bolt"
+	"github.com/blacktear23/dragonbolt/mvcc"
+)
 
 func sameLen(val1 []byte, val2 []byte, sameLen bool) bool {
 	if sameLen {
 		return len(val1) == len(val2)
 	}
 	return true
+}
+
+func (d *DiskKV) checkColumnFamily(cf string) ([]byte, error) {
+	switch cf {
+	case CFData, CFLock, CFWrite, mvcc.CFKeys, mvcc.CFValues:
+		return []byte(cf), nil
+	default:
+		return nil, ErrInvalidColumnFamily
+	}
 }
 
 func (d *DiskKV) processCfGet(query *Query) (*QueryResult, error) {

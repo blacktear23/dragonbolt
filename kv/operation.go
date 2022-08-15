@@ -1,5 +1,7 @@
 package kv
 
+import "github.com/blacktear23/dragonbolt/mvcc"
+
 const (
 	// Normal Mutation Operations
 	PUT = 1
@@ -37,6 +39,7 @@ const (
 	MVCC_LOCK         = 27
 	MVCC_UNLOCK       = 28
 	MVCC_UNLOCK_FORCE = 29
+	MVCC_GC           = 30
 
 	RESULT_ERR          uint64 = 0
 	RESULT_OK           uint64 = 1
@@ -103,7 +106,7 @@ func (qr *QueryResult) AddKVPair(key, value []byte, op int) {
 
 func CheckColumnFamily(cf string) error {
 	switch cf {
-	case CFData, CFLock, CFWrite:
+	case CFData, CFLock, CFWrite, mvcc.CFKeys, mvcc.CFValues:
 		return nil
 	default:
 		return ErrInvalidColumnFamily

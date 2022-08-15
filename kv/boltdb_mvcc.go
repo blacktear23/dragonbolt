@@ -67,6 +67,8 @@ func (d *DiskKV) processMvccMutation(txn *bolt.Tx, mut Mutation) (uint64, error)
 		err = mvccTxn.UnlockKey(mut.Version, mut.Key, false)
 	case MVCC_UNLOCK_FORCE:
 		err = mvccTxn.UnlockKey(mut.Version, mut.Key, true)
+	case MVCC_GC:
+		err = d.processMvccGC(mut.Version)
 	}
 	if err != nil {
 		if mvcc.IsKeyLockedError(err) {

@@ -25,6 +25,7 @@ type DiskKV struct {
 	bucketName  []byte
 	closed      bool
 	aborted     bool
+	gcRunning   bool
 }
 
 func NewDiskKV(clusterID uint64, nodeID uint64, db *bolt.DB) *DiskKV {
@@ -69,15 +70,6 @@ func (d *DiskKV) queryAppliedIndex() (uint64, error) {
 	return binary.LittleEndian.Uint64(val), nil
 }
 
-func (d *DiskKV) checkColumnFamily(cf string) ([]byte, error) {
-	switch cf {
-	case CFData, CFLock, CFWrite:
-		return []byte(cf), nil
-	default:
-		return nil, ErrInvalidColumnFamily
-	}
-}
-
 // Open opens the state machine and return the index of the last Raft Log entry
 // already updated into the state machine.
 func (d *DiskKV) Open(stopc <-chan struct{}) (uint64, error) {
@@ -94,6 +86,7 @@ func (d *DiskKV) Open(stopc <-chan struct{}) (uint64, error) {
 		panic(err)
 	}
 	d.lastApplied = appliedIndex
+	go d.StartGC()
 	return appliedIndex, nil
 }
 
@@ -217,7 +210,7 @@ func (d *DiskKV) processMutations(txn *bolt.Tx, bucket *bolt.Bucket, muts []Muta
 		switch mut.Op {
 		case CF_PUT, CF_DEL:
 			result, err = d.processCFMutation(txn, mut)
-		case MVCC_SET, MVCC_DEL, MVCC_LOCK, MVCC_UNLOCK, MVCC_UNLOCK_FORCE:
+		case MVCC_SET, MVCC_DEL, MVCC_LOCK, MVCC_UNLOCK, MVCC_UNLOCK_FORCE, MVCC_GC:
 			result, err = d.processMvccMutation(txn, mut)
 		default:
 			result, err = d.processMutation(bucket, mut)

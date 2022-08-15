@@ -13,11 +13,11 @@ func (c *rclient) handleCfSet(args []protocol.Encodable) protocol.Encodable {
 	if len(args) < 3 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
-	key, err := c.parseKey(args[0])
+	cf, err := c.parseCf(args[0])
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
-	cf, err := c.parseCf(args[1])
+	key, err := c.parseKey(args[1])
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
@@ -48,11 +48,11 @@ func (c *rclient) handleCfGet(args []protocol.Encodable) protocol.Encodable {
 	if len(args) < 2 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
-	key, err := c.parseKey(args[0])
+	cf, err := c.parseCf(args[0])
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
-	cf, err := c.parseCf(args[1])
+	key, err := c.parseKey(args[1])
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
@@ -77,11 +77,11 @@ func (c *rclient) handleCfDel(args []protocol.Encodable) protocol.Encodable {
 	if len(args) < 2 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
-	key, err := c.parseKey(args[0])
+	cf, err := c.parseCf(args[0])
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
-	cf, err := c.parseCf(args[1])
+	key, err := c.parseKey(args[1])
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
@@ -104,7 +104,7 @@ func (c *rclient) handleCfDel(args []protocol.Encodable) protocol.Encodable {
 }
 
 func (c *rclient) handleCfScan(args []protocol.Encodable, reverse bool) protocol.Encodable {
-	scanHelp := "SCAN CFName StartKey [EndKey] [LIMIT lim]"
+	scanHelp := "SCAN CFName StartKey [EndKey] [LIMIT limit]"
 	if len(args) < 2 {
 		return protocol.NewSimpleErrorf("Invalid start key parameters, %s", scanHelp)
 	}
@@ -153,9 +153,9 @@ func (c *rclient) handleCfScan(args []protocol.Encodable, reverse bool) protocol
 		}
 	}
 
-	op := kv.CF_SCAN_KEY
+	op := kv.CF_SCAN
 	if reverse {
-		op = kv.CF_RSCAN_KEY
+		op = kv.CF_RSCAN
 	}
 	query := &kv.Query{
 		Op:      op,
@@ -163,7 +163,7 @@ func (c *rclient) handleCfScan(args []protocol.Encodable, reverse bool) protocol
 		Start:   startKey,
 		End:     endKey,
 		Limit:   int(limit),
-		SameLen: true,
+		SameLen: false,
 	}
 	result, err := c.trySyncRead(query, 100)
 	if err != nil {
@@ -171,7 +171,11 @@ func (c *rclient) handleCfScan(args []protocol.Encodable, reverse bool) protocol
 	}
 	ret := protocol.Array{}
 	for _, kvp := range result.KVS {
-		ret = append(ret, protocol.NewBlobString(kvp.Key))
+		item := protocol.Array{
+			protocol.NewBlobString(kvp.Key),
+			protocol.NewBlobString(kvp.Value),
+		}
+		ret = append(ret, item)
 	}
 	return ret
 }

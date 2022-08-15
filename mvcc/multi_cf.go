@@ -15,11 +15,14 @@ const (
 
 	KEY_LOCK   byte = 'L'
 	KEY_UNLOCK byte = 'Y'
+
+	CFKeys   = "cf:mvcc:keys"
+	CFValues = "cf:mvcc:vals"
 )
 
 var (
-	cfKeys      = []byte("cf:mvcc:keys")
-	cfValues    = []byte("cf:mvcc:vals")
+	cfKeys      = []byte(CFKeys)
+	cfValues    = []byte(CFValues)
 	cfKeysValue = []byte("Y")
 
 	_ MvccDB     = (*TwoCFMvcc)(nil)

@@ -2,6 +2,7 @@ package kv
 
 import (
 	"errors"
+	"time"
 
 	"github.com/blacktear23/bolt"
 	sm "github.com/lni/dragonboat/v4/statemachine"
@@ -20,7 +21,15 @@ var (
 	ErrInvalidQuery          = errors.New("Invalid Query")
 	ErrUnkonwnQueryOperation = errors.New("Unknown query operation")
 	ErrInvalidColumnFamily   = errors.New("Invalid Column Family")
+
+	tsoSrv       TSOSrv = nil
+	errTsoNotSet        = errors.New("TSO Service not setted")
+	gcDuration   int    = 600
 )
+
+type TSOSrv interface {
+	GetTSO() (uint64, error)
+}
 
 type DiskKVBuilder struct {
 	DB *bolt.DB
@@ -32,4 +41,23 @@ func (b *DiskKVBuilder) Build(clusterID uint64, nodeID uint64) sm.IOnDiskStateMa
 		nodeID:    nodeID,
 		db:        b.DB,
 	}
+}
+
+func SetTsoService(srv TSOSrv) {
+	tsoSrv = srv
+}
+
+func SetGCDuration(i int) {
+	gcDuration = i
+}
+
+func getTso() (uint64, error) {
+	if tsoSrv == nil {
+		return 0, errTsoNotSet
+	}
+	return tsoSrv.GetTSO()
+}
+
+func getGCDuration() time.Duration {
+	return time.Duration(gcDuration) * time.Second
 }
