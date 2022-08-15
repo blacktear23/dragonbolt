@@ -3,7 +3,7 @@ module github.com/blacktear23/dragonbolt
 go 1.18
 
 require (
-	github.com/blacktear23/bolt v1.3.5
+	github.com/blacktear23/bolt v1.4.0
 	github.com/igrmk/treemap/v2 v2.0.1
 	github.com/lni/dragonboat/v4 v4.0.0-20220724134658-ed44d312daa2
 	github.com/lni/goutils v1.3.1-0.20220604063047-388d67b4dbc4
@@ -49,7 +49,4 @@ require (
 	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 )
 
-// replace github.com/lni/dragonboat/v4 => /Users/rain/goprojs/src/github.com/blacktear23/dragonboat
-replace github.com/blacktear23/bolt => /Users/rain/goprojs/src/github.com/blacktear23/bolt
-
-replace github.com/cockroachdb/pebble => /Users/rain/goprojs/src/github.com/blacktear23/pebble
+replace github.com/cockroachdb/pebble v0.0.0-20220407171941-2120d145e292 => github.com/blacktear23/pebble v0.0.0-20220815103035-e1b88b9c8135
