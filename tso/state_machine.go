@@ -32,6 +32,7 @@ type TSOKVBuilder struct {
 	StoreManager *store.StoreManager
 	InitMembers  map[uint64]string
 	ReplicaID    uint64
+	ShardID      uint64
 }
 
 func (b *TSOKVBuilder) Build(clusterID uint64, nodeID uint64) sm.IOnDiskStateMachine {
@@ -43,10 +44,12 @@ func (b *TSOKVBuilder) Build(clusterID uint64, nodeID uint64) sm.IOnDiskStateMac
 		sm:        b.StoreManager,
 		members:   b.InitMembers,
 		replicaID: b.ReplicaID,
+		shardID:   b.ShardID,
 	}
 }
 
 type TSOKV struct {
+	shardID     uint64
 	clusterID   uint64
 	nodeID      uint64
 	lastApplied uint64
@@ -239,7 +242,11 @@ func (m *TSOKV) handleUpDB(bucket *bolt.Bucket, req *tsoRequest) (uint64, error)
 		log.Println("Cannot create store", err)
 		return 0, nil
 	}
-	err = stor.StartReplica(m.nh, m.members, m.replicaID, false)
+	members := m.members
+	if len(req.Members) > 0 {
+		members = req.Members
+	}
+	err = stor.StartReplica(m.nh, members, m.replicaID)
 	if err != nil {
 		log.Println("Cannot start replica store", err)
 		return 0, nil
@@ -316,21 +323,20 @@ func (m *TSOKV) PrepareSnapshot() (interface{}, error) {
 func (m *TSOKV) SaveSnapshot(ctx interface{}, w io.Writer, done <-chan struct{}) error {
 	m.checkStatus()
 	return m.db.View(func(txn *bolt.Tx) error {
-		snapshot := Snapshot{}
-		bucket := txn.Bucket(m.bucketName)
-		if bucket == nil {
-			return kv.ErrBucketNotExists
-		}
-		bucket.ForEach(func(key []byte, val []byte) error {
-			snapshot.KVS = append(snapshot.KVS, KVPair{Key: key, Value: val})
+		snapshot := &Snapshot{}
+		err := txn.ForEach(func(name []byte, b *bolt.Bucket) error {
+			snapshot.AddBucket(name)
+			b.ForEach(func(key []byte, val []byte) error {
+				snapshot.AddKVS(name, key, val)
+				return nil
+			})
 			return nil
 		})
-		enc := json.NewEncoder(w)
-		err := enc.Encode(snapshot)
 		if err != nil {
 			return err
 		}
-		return nil
+		enc := json.NewEncoder(w)
+		return enc.Encode(snapshot)
 	})
 }
 
@@ -345,12 +351,17 @@ func (m *TSOKV) RecoverFromSnapshot(r io.Reader, done <-chan struct{}) error {
 		return err
 	}
 	return m.db.Update(func(txn *bolt.Tx) error {
-		bucket, err := txn.CreateBucketIfNotExists(m.bucketName)
-		if err != nil {
-			return err
+		for _, bname := range snapshot.Buckets {
+			log.Println("Ensure Bucket", string(bname))
+			_, err := txn.CreateBucketIfNotExists(bname)
+			if err != nil {
+				return err
+			}
 		}
 		for _, kvp := range snapshot.KVS {
-			err = bucket.Put(kvp.Key, kvp.Value)
+			bucket := txn.Bucket(kvp.Bucket)
+			log.Printf("Update Key-Value: %+v", kvp)
+			err := bucket.Put(kvp.Key, kvp.Value)
 			if err != nil {
 				return err
 			}
@@ -364,10 +375,24 @@ func (m *TSOKV) Close() error {
 }
 
 type KVPair struct {
-	Key   []byte `json:"key"`
-	Value []byte `json:"val"`
+	Bucket []byte `json:"buck"`
+	Key    []byte `json:"key"`
+	Value  []byte `json:"val"`
 }
 
 type Snapshot struct {
-	KVS []KVPair `json:"kvs"`
+	Buckets [][]byte `json:"bucks"`
+	KVS     []KVPair `json:"kvs"`
+}
+
+func (s *Snapshot) AddBucket(name []byte) {
+	s.Buckets = append(s.Buckets, name)
+}
+
+func (s *Snapshot) AddKVS(bname []byte, key []byte, val []byte) {
+	s.KVS = append(s.KVS, KVPair{
+		Bucket: bname,
+		Key:    key,
+		Value:  val,
+	})
 }

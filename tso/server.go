@@ -45,10 +45,11 @@ type DBInfo struct {
 }
 
 type tsoRequest struct {
-	Op      int    `json:"op"`
-	Key     []byte `json:"key"`
-	Name    string `json:"name"`
-	ShardID uint64 `json:"shard_id"`
+	Op      int               `json:"op"`
+	Key     []byte            `json:"key"`
+	Name    string            `json:"name"`
+	ShardID uint64            `json:"shard_id"`
+	Members map[uint64]string `json:"members"`
 }
 
 type tsoQuery struct {
@@ -70,14 +71,14 @@ type TSOServer struct {
 	cs           *client.Session
 }
 
-func NewTSOServer(nh *dragonboat.NodeHost, shardID uint64, replicaID uint64, dbDir string, initMembers map[uint64]string, startShardID uint64, sm *store.StoreManager) (*TSOServer, error) {
+func NewTSOServer(nh *dragonboat.NodeHost, shardID uint64, replicaID uint64, dbDir string, initMembers map[uint64]string, startShardID uint64, sm *store.StoreManager, join bool) (*TSOServer, error) {
 	cfg := config.Config{
 		ReplicaID:          replicaID,
 		ShardID:            shardID,
 		ElectionRTT:        10,
 		HeartbeatRTT:       1,
 		CheckQuorum:        true,
-		SnapshotEntries:    0,
+		SnapshotEntries:    4096,
 		CompactionOverhead: 16,
 	}
 	tsoDBFile := path.Join(dbDir, fmt.Sprintf("tso-%d.db", replicaID))
@@ -90,9 +91,14 @@ func NewTSOServer(nh *dragonboat.NodeHost, shardID uint64, replicaID uint64, dbD
 		StoreManager: sm,
 		DB:           db,
 		ReplicaID:    replicaID,
+		ShardID:      shardID,
 		InitMembers:  initMembers,
 	}
-	err = nh.StartOnDiskReplica(initMembers, false, builder.Build, cfg)
+	if join {
+		err = nh.StartOnDiskReplica(nil, join, builder.Build, cfg)
+	} else {
+		err = nh.StartOnDiskReplica(initMembers, join, builder.Build, cfg)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +212,16 @@ func (s *TSOServer) GetUniqID() (uint64, error) {
 	return ret.Value, nil
 }
 
+func (s *TSOServer) GetMembers() map[uint64]string {
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	membership, err := s.nh.SyncGetShardMembership(ctx, s.shardID)
+	cancel()
+	if err != nil {
+		return nil
+	}
+	return membership.Nodes
+}
+
 func (s *TSOServer) CreateDB(name string) (*DBInfo, error) {
 	nid, err := s.GetUniqID()
 	if err != nil {
@@ -239,6 +255,7 @@ func (s *TSOServer) UpDB(info *DBInfo) error {
 		Op:      OP_UP_DB,
 		Name:    info.Name,
 		ShardID: info.ShardID,
+		Members: s.GetMembers(),
 	}
 	data, err := json.Marshal(req)
 	if err != nil {

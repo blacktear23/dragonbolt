@@ -7,17 +7,19 @@ import (
 type StoreManager struct {
 	Dir    string
 	Stores sync.Map
+	Join   bool
 }
 
-func NewStoreManager(dir string) *StoreManager {
+func NewStoreManager(dir string, join bool) *StoreManager {
 	return &StoreManager{
 		Dir:    dir,
 		Stores: sync.Map{},
+		Join:   join,
 	}
 }
 
 func (m *StoreManager) CreateStore(storeID uint64) (*BoltDBStore, error) {
-	stor, err := NewBoltDBStore(m.Dir, storeID)
+	stor, err := NewBoltDBStore(m.Dir, storeID, m.Join)
 	if err != nil {
 		return nil, err
 	}

@@ -47,6 +47,7 @@ const (
 	GET
 	UNLOCK
 	GC
+	ADDNODE
 )
 
 func parseCommand(msg string) (RequestType, string, string, bool) {
@@ -75,6 +76,11 @@ func parseCommand(msg string) (RequestType, string, string, bool) {
 			return GC, "", "", false
 		}
 		return GC, parts[1], "", true
+	case "addnode":
+		if len(parts) != 3 {
+			return ADDNODE, "", "", false
+		}
+		return ADDNODE, parts[1], parts[2], true
 	}
 	return PUT, "", "", false
 }
@@ -85,6 +91,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stdout, "get key\n")
 	fmt.Fprintf(os.Stdout, "gc ver\n")
 	fmt.Fprintf(os.Stdout, "unlock key\n")
+	fmt.Fprintf(os.Stdout, "addnode target replicaID\n")
 }
 
 func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonboat.NodeHost, initMembers map[uint64]string, replicaID uint64) {
@@ -96,7 +103,7 @@ func startRestStores(tsoSrv *tso.TSOServer, sm *store.StoreManager, nh *dragonbo
 	for _, db := range dbs {
 		stor, err := sm.CreateStore(db.ShardID)
 		if err == nil {
-			serr := stor.StartReplica(nh, initMembers, replicaID, false)
+			serr := stor.StartReplica(nh, initMembers, replicaID)
 			if serr != nil {
 				log.Println("Start Replica DB", db.Name, "Shard ID", db.ShardID, "got error:", err)
 			}
@@ -124,6 +131,20 @@ func WaitSignal(onReload, onExit SignalCallback) {
 			log.Fatal("Server Exit\n")
 		}
 	}
+}
+
+func listAllShards(tsoSrv *tso.TSOServer) []uint64 {
+	ret := []uint64{
+		tsoShardID,
+		exampleShardID,
+	}
+	infos, err := tsoSrv.ListDB()
+	if err == nil {
+		for _, info := range infos {
+			ret = append(ret, info.ShardID)
+		}
+	}
+	return ret
 }
 
 func main() {
@@ -172,7 +193,6 @@ func main() {
 	logger.GetLogger("transport").SetLevel(logger.ERROR)
 	logger.GetLogger("grpc").SetLevel(logger.ERROR)
 	datadir := filepath.Join(
-		"/tmp",
 		walDir,
 		fmt.Sprintf("node-%d", replicaID),
 	)
@@ -187,11 +207,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	sm := store.NewStoreManager(dbDir)
+	sm := store.NewStoreManager(dbDir, join)
 	defer sm.Close()
 
 	// Start TSO
-	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbDir, initMembers, exampleShardID+1, sm)
+	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbDir, initMembers, exampleShardID+1, sm, join)
 	if err != nil {
 		log.Fatal("Start TSO Server error", err)
 	}
@@ -203,7 +223,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := stor.StartReplica(nh, initMembers, uint64(replicaID), join); err != nil {
+	if err := stor.StartReplica(nh, initMembers, uint64(replicaID)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -296,6 +316,30 @@ func main() {
 						} else {
 							os.Stdout.Write([]byte("> "))
 						}
+					}
+				} else if rt == ADDNODE {
+					var (
+						target           = key
+						replicaID uint64 = 0
+						err       error
+					)
+					replicaID, err = strconv.ParseUint(val, 10, 64)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Invalid replica ID %v\n", err)
+						replicaID = 0
+					}
+					if replicaID != 0 {
+						for _, shardID := range listAllShards(tsoServer) {
+							_, err = nh.RequestAddReplica(shardID, replicaID, target, 0, 60*time.Second)
+							if err != nil {
+								fmt.Fprintf(os.Stderr, "RequestAddReplica returned error %v\n", err)
+							} else {
+								os.Stdout.WriteString(fmt.Sprintf("Add Shard %d Replica %d OK", shardID, replicaID))
+							}
+						}
+						os.Stdout.Write([]byte("> "))
+					} else {
+						os.Stdout.Write([]byte("> "))
 					}
 				} else {
 					result, err := nh.SyncRead(ctx, exampleShardID, []byte(key))
