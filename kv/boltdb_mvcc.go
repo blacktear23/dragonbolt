@@ -58,9 +58,9 @@ func (d *DiskKV) processMvccMutation(txn *bolt.Tx, mut Mutation) (uint64, error)
 	mvccTxn := mvcc.NewTwoCFMvcc(txn)
 	switch mut.Op {
 	case MVCC_SET:
-		err = mvccTxn.Set(mut.Version, mut.Key, mut.Value)
+		err = mvccTxn.Set(mut.Version, mut.CommitVersion, mut.Key, mut.Value)
 	case MVCC_DEL:
-		err = mvccTxn.Delete(mut.Version, mut.Key)
+		err = mvccTxn.Delete(mut.Version, mut.CommitVersion, mut.Key)
 	case MVCC_LOCK:
 		err = mvccTxn.LockKey(mut.Version, mut.Key)
 	case MVCC_UNLOCK:
@@ -71,6 +71,9 @@ func (d *DiskKV) processMvccMutation(txn *bolt.Tx, mut Mutation) (uint64, error)
 	if err != nil {
 		if mvcc.IsKeyLockedError(err) {
 			return RESULT_KEY_LOCKED, err
+		}
+		if mvcc.IsTxnConflictError(err) {
+			return RESULT_TXN_CONFLICT, err
 		}
 		return RESULT_ERR, err
 	}

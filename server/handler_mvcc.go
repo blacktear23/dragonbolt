@@ -21,6 +21,7 @@ var (
 
 	ErrKeyLocked   = errors.New("Key is locked")
 	ErrWrongResult = errors.New("Wrong result")
+	ErrTxnConflict = errors.New("Transaction conflict")
 )
 
 type mvccTxnOps struct {
@@ -36,8 +37,11 @@ func (o *mvccTxnOps) Batch(muts []kv.Mutation) error {
 		return nil
 	}
 	ret, err := o.rc.trySyncPropose(data, 100)
-	if ret.Value == kv.RESULT_KEY_LOCKED {
+	switch ret.Value {
+	case kv.RESULT_KEY_LOCKED:
 		return ErrKeyLocked
+	case kv.RESULT_TXN_CONFLICT:
+		return ErrTxnConflict
 	}
 	return err
 }
@@ -195,6 +199,9 @@ func (c *rclient) handleCommit(args []protocol.Encodable) protocol.Encodable {
 	c.txn = nil
 	c.txnVer = 0
 	if err != nil {
+		if err == ErrKeyLocked || err == ErrTxnConflict {
+			return protocol.NewSimpleError(err.Error())
+		}
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
 	}
 	return protocol.NewSimpleString("OK")

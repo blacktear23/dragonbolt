@@ -38,11 +38,11 @@ func (t *MemMergeTxn) Begin() error {
 	return nil
 }
 
-func (t *MemMergeTxn) Commit(ver uint64) error {
+func (t *MemMergeTxn) Commit(commitVer uint64) error {
 	if t.memdb == nil {
 		return ErrNotBegin
 	}
-	muts := t.memdb.GetMutations(ver)
+	muts := t.memdb.GetMutations(commitVer)
 	err := t.ops.Batch(muts)
 	if len(t.lockedKeys) > 0 {
 		t.cleanKeys()

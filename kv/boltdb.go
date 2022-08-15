@@ -173,6 +173,16 @@ func (d *DiskKV) updateAppliedIndex(idx uint64) error {
 	})
 }
 
+func isDirectReturnError(err error) bool {
+	if mvcc.IsKeyLockedError(err) {
+		return false
+	}
+	if mvcc.IsTxnConflictError(err) {
+		return false
+	}
+	return true
+}
+
 func (d *DiskKV) processEntry(ent sm.Entry) (sm.Result, error) {
 	var result sm.Result
 	err := d.db.Update(func(txn *bolt.Tx) error {
@@ -185,18 +195,14 @@ func (d *DiskKV) processEntry(ent sm.Entry) (sm.Result, error) {
 			panic(err)
 		}
 		ret, perr := d.processMutations(txn, bucket, mutations)
-		if perr != nil && !mvcc.IsKeyLockedError(perr) {
+		if perr != nil && isDirectReturnError(perr) {
 			return perr
 		}
 		result = sm.Result{Value: ret}
-		if mvcc.IsKeyLockedError(perr) {
-			// Is key locked error just rollback
-			return perr
-		}
-		return nil
+		return perr
 	})
-	if mvcc.IsKeyLockedError(err) {
-		// If key locked just return result and no error
+	// If key locked or txn conflict, just return result and no error
+	if mvcc.IsKeyLockedError(err) || mvcc.IsTxnConflictError(err) {
 		return result, nil
 	}
 	return result, err

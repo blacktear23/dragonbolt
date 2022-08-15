@@ -36,115 +36,6 @@ func NewTwoCFMvcc(txn *bolt.Tx) *TwoCFMvcc {
 	}
 }
 
-func (m *TwoCFMvcc) Get(ver uint64, key []byte) ([]byte, error) {
-	kb := m.txn.Bucket(cfKeys)
-	if kb == nil {
-		// No bucket means no key exists just return
-		return nil, ErrKeyNotFound
-	}
-	kVal := kb.Get(key)
-	if kVal == nil {
-		// Key not exists means no key
-		return nil, ErrKeyNotFound
-	}
-	return m.readVersion(ver, key)
-}
-
-func (m *TwoCFMvcc) Set(ver uint64, key []byte, value []byte) error {
-	kb, vb, err := m.ensureBuckets()
-	if err != nil {
-		return err
-	}
-	kv := kb.Get(key)
-	if m.checkLocked(ver, kv) {
-		return ErrKeyLocked
-	}
-	if kv == nil {
-		// Not exists just set initial key status
-		err = kb.Put(key, cfKeysValue)
-		if err != nil {
-			return err
-		}
-	}
-	ekey := encodeMvccKey(ver, key)
-	eval := encodeMvccValue(OP_SET, value)
-	return vb.Put(ekey, eval)
-}
-
-func (m *TwoCFMvcc) checkLocked(ver uint64, val []byte) bool {
-	if len(val) != 9 || val[0] == KEY_UNLOCK {
-		return false
-	}
-	// Key locked, check version
-	lockVer := binary.BigEndian.Uint64(val[1:])
-	if ver == lockVer {
-		// Mean self locked should not exclude
-		return false
-	}
-	return true
-}
-
-// Return
-//
-//	bool:  locked or not
-//	error: error
-func (m *TwoCFMvcc) LockKey(ver uint64, key []byte) error {
-	kb, _, err := m.ensureBuckets()
-	if err != nil {
-		return err
-	}
-	kv := kb.Get(key)
-	if m.checkLocked(ver, kv) {
-		return ErrKeyLocked
-	}
-	lockVal := encodeLockValue(ver)
-	err = kb.Put(key, lockVal)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m *TwoCFMvcc) UnlockKey(ver uint64, key []byte, force bool) error {
-	kb, _, err := m.ensureBuckets()
-	if err != nil {
-		return err
-	}
-	if !force {
-		kv := kb.Get(key)
-		if m.checkLocked(ver, kv) {
-			return ErrKeyLocked
-		}
-	}
-	return kb.Put(key, cfKeysValue)
-}
-
-func (m *TwoCFMvcc) Delete(ver uint64, key []byte) error {
-	kb, vb, err := m.ensureBuckets()
-	if err != nil {
-		return err
-	}
-	kv := kb.Get(key)
-	if kv == nil {
-		// Not found no need to update value cf
-		return nil
-	}
-	if m.checkLocked(ver, kv) {
-		return ErrKeyLocked
-	}
-	ekey := encodeMvccKey(ver, key)
-	eval := encodeMvccValue(OP_DEL, nil)
-	return vb.Put(ekey, eval)
-}
-
-func (m *TwoCFMvcc) Cursor(ver uint64) MvccCursor {
-	return &twoCFMvccCursor{
-		ver:    ver,
-		txn:    m.txn,
-		finish: false,
-	}
-}
-
 func (m *TwoCFMvcc) readVersion(ver uint64, key []byte) ([]byte, error) {
 	vb := m.txn.Bucket(cfValues)
 	if vb == nil {
@@ -183,6 +74,147 @@ func (m *TwoCFMvcc) ensureBuckets() (kb *bolt.Bucket, vb *bolt.Bucket, err error
 		return nil, nil, err
 	}
 	return kb, vb, err
+}
+
+func (m *TwoCFMvcc) checkLocked(ver uint64, val []byte) bool {
+	if len(val) != 9 || val[0] == KEY_UNLOCK {
+		return false
+	}
+	// Key locked, check version
+	lockVer := binary.BigEndian.Uint64(val[1:])
+	if ver == lockVer {
+		// Mean self locked should not exclude
+		return false
+	}
+	return true
+}
+
+func (m *TwoCFMvcc) checkConflict(vb *bolt.Bucket, key []byte, startVer uint64, commitVer uint64) bool {
+	c := vb.Cursor()
+	latestKey := encodeMvccKey(MAX_UINT64, key)
+	ek, _ := c.Seek(latestKey)
+	for {
+		if !bytes.HasPrefix(ek, key) {
+			// Not found any value means no commit at all
+			return false
+		}
+		dver := decodeMvccKeyVersion(ek)
+		if dver == 0 {
+			// Error mvcc key iterate next one
+			ek, _ = c.Next()
+			continue
+		}
+		// Not dver is valid and can check for conflict
+		if dver > startVer && dver < commitVer {
+			// If someone commit key between start version and commit version it should be conflict
+			// Don't use equals because other txn's commit version is not equals to current txn's start
+			// version or commit version.
+			return true
+		}
+		return false
+	}
+}
+
+func (m *TwoCFMvcc) Get(ver uint64, key []byte) ([]byte, error) {
+	kb := m.txn.Bucket(cfKeys)
+	if kb == nil {
+		// No bucket means no key exists just return
+		return nil, ErrKeyNotFound
+	}
+	kVal := kb.Get(key)
+	if kVal == nil {
+		// Key not exists means no key
+		return nil, ErrKeyNotFound
+	}
+	return m.readVersion(ver, key)
+}
+
+func (m *TwoCFMvcc) Set(ver uint64, commitVer uint64, key []byte, value []byte) error {
+	kb, vb, err := m.ensureBuckets()
+	if err != nil {
+		return err
+	}
+	kv := kb.Get(key)
+	if m.checkLocked(ver, kv) {
+		return ErrKeyLocked
+	}
+	if m.checkConflict(vb, key, ver, commitVer) {
+		return ErrTxnConflict
+	}
+	if kv == nil {
+		// Not exists just set initial key status
+		err = kb.Put(key, cfKeysValue)
+		if err != nil {
+			return err
+		}
+	}
+	ekey := encodeMvccKey(commitVer, key)
+	eval := encodeMvccValue(OP_SET, value)
+	return vb.Put(ekey, eval)
+}
+
+// Return
+//
+//	bool:  locked or not
+//	error: error
+func (m *TwoCFMvcc) LockKey(ver uint64, key []byte) error {
+	kb, _, err := m.ensureBuckets()
+	if err != nil {
+		return err
+	}
+	kv := kb.Get(key)
+	if m.checkLocked(ver, kv) {
+		return ErrKeyLocked
+	}
+	lockVal := encodeLockValue(ver)
+	err = kb.Put(key, lockVal)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *TwoCFMvcc) UnlockKey(ver uint64, key []byte, force bool) error {
+	kb, _, err := m.ensureBuckets()
+	if err != nil {
+		return err
+	}
+	if !force {
+		kv := kb.Get(key)
+		if m.checkLocked(ver, kv) {
+			return ErrKeyLocked
+		}
+	}
+	return kb.Put(key, cfKeysValue)
+}
+
+func (m *TwoCFMvcc) Delete(ver uint64, commitVer uint64, key []byte) error {
+	kb, vb, err := m.ensureBuckets()
+	if err != nil {
+		return err
+	}
+	kv := kb.Get(key)
+	if kv == nil {
+		// Not found no need to update value cf
+		return nil
+	}
+	if m.checkLocked(ver, kv) {
+		return ErrKeyLocked
+	}
+	if m.checkConflict(vb, key, ver, commitVer) {
+		return ErrTxnConflict
+	}
+	ekey := encodeMvccKey(commitVer, key)
+	eval := encodeMvccValue(OP_DEL, nil)
+	return vb.Put(ekey, eval)
+}
+
+func (m *TwoCFMvcc) Cursor(ver uint64) MvccCursor {
+	return &twoCFMvccCursor{
+		ver:    ver,
+		txn:    m.txn,
+		finish: false,
+	}
 }
 
 type twoCFMvccCursor struct {

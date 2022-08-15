@@ -8,6 +8,7 @@ import (
 var (
 	ErrKeyNotFound = errors.New("Key Not Found")
 	ErrKeyLocked   = errors.New("Key Is Locked")
+	ErrTxnConflict = errors.New("Transaction Conflict")
 )
 
 func IsKeyNotFoundError(err error) bool {
@@ -18,10 +19,14 @@ func IsKeyLockedError(err error) bool {
 	return err == ErrKeyLocked
 }
 
+func IsTxnConflictError(err error) bool {
+	return err == ErrTxnConflict
+}
+
 type MvccDB interface {
 	Get(ver uint64, key []byte) (val []byte, err error)
-	Set(ver uint64, key []byte, val []byte) error
-	Delete(ver uint64, key []byte) error
+	Set(ver uint64, commitVer uint64, key []byte, val []byte) error
+	Delete(ver uint64, commitVer uint64, key []byte) error
 	Cursor(ver uint64) MvccCursor
 	LockKey(ver uint64, key []byte) error
 	UnlockKey(ver uint64, key []byte, force bool) error

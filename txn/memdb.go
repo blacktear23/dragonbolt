@@ -21,7 +21,7 @@ type MemDB struct {
 	dels    map[string]bool
 }
 
-func NewMemDB(putOp int, delOp int, version uint64) *MemDB {
+func NewMemDB(putOp int, delOp int, ver uint64) *MemDB {
 	return &MemDB{
 		muts: []kv.Mutation{},
 		view: treemap.NewWithKeyCompare[[]byte, []byte](func(a []byte, b []byte) bool {
@@ -30,7 +30,7 @@ func NewMemDB(putOp int, delOp int, version uint64) *MemDB {
 		dels:    make(map[string]bool),
 		PutOp:   putOp,
 		DelOp:   delOp,
-		Version: version,
+		Version: ver,
 	}
 }
 
@@ -78,16 +78,17 @@ func (db *MemDB) addmut(op int, key []byte, value []byte) {
 	}
 	if db.Version != 0 {
 		mut.Version = db.Version
+		mut.CommitVersion = db.Version
 	}
 	db.muts = append(db.muts, mut)
 }
 
-func (db *MemDB) GetMutations(ver uint64) []kv.Mutation {
-	if ver == 0 {
+func (db *MemDB) GetMutations(commitVer uint64) []kv.Mutation {
+	if commitVer == 0 {
 		return db.muts
 	}
 	for i, _ := range db.muts {
-		db.muts[i].Version = ver
+		db.muts[i].CommitVersion = commitVer
 	}
 	return db.muts
 }

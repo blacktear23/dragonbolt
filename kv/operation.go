@@ -38,10 +38,11 @@ const (
 	MVCC_UNLOCK       = 28
 	MVCC_UNLOCK_FORCE = 29
 
-	RESULT_ERR        uint64 = 0
-	RESULT_OK         uint64 = 1
-	RESULT_FAIL       uint64 = 2
-	RESULT_KEY_LOCKED uint64 = 3
+	RESULT_ERR          uint64 = 0
+	RESULT_OK           uint64 = 1
+	RESULT_FAIL         uint64 = 2
+	RESULT_KEY_LOCKED   uint64 = 3
+	RESULT_TXN_CONFLICT uint64 = 4
 
 	CFData  = "cf:data"
 	CFLock  = "cf:lock"
@@ -49,12 +50,13 @@ const (
 )
 
 type Mutation struct {
-	Op       int    `json:"op"`
-	Cf       string `json:"cf"`
-	Key      []byte `json:"key"`
-	Value    []byte `json:"val"`
-	NewValue []byte `json:"nval"`
-	Version  uint64 `json:"ver"`
+	Op            int    `json:"op"`
+	Cf            string `json:"cf"`
+	Key           []byte `json:"key"`
+	Value         []byte `json:"val"`
+	NewValue      []byte `json:"nval"`
+	Version       uint64 `json:"ver"`
+	CommitVersion uint64 `json:"commit_ver"`
 }
 
 type Query struct {
