@@ -211,10 +211,41 @@ func (c *rclient) handleRollback(args []protocol.Encodable) protocol.Encodable {
 	if c.txn == nil {
 		return protocol.NewSimpleError("Transaction not begin")
 	}
-	err := c.txn.Rollback()
-	c.txn = nil
+	var err error
+	if len(args) == 1 {
+		// Rollback to savepoint
+		name, err := c.parseString(args[0])
+		if err != nil {
+			return protocol.NewSimpleError("Invalid savepoint name")
+		}
+		err = c.txn.RollbackToSavepoint(name)
+		if err != nil {
+			return protocol.NewSimpleError(err.Error())
+		}
+	} else {
+		err = c.txn.Rollback()
+		c.txn = nil
+		if err != nil {
+			return protocol.NewSimpleErrorf("Internal Error: %v", err)
+		}
+	}
+	return protocol.NewSimpleString("OK")
+}
+
+func (c *rclient) handleSavepoint(args []protocol.Encodable) protocol.Encodable {
+	if c.txn == nil {
+		return protocol.NewSimpleError("Transaction not begin")
+	}
+	if len(args) < 1 {
+		return protocol.NewSimpleError("Require savepoint name")
+	}
+	name, err := c.parseString(args[0])
 	if err != nil {
-		return protocol.NewSimpleErrorf("Internal Error: %v", err)
+		return protocol.NewSimpleError("Invalid savepoint name")
+	}
+	err = c.txn.CreateSavepoint(name)
+	if err != nil {
+		return protocol.NewSimpleError(err.Error())
 	}
 	return protocol.NewSimpleString("OK")
 }

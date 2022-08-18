@@ -51,6 +51,27 @@ func (t *MemMergeTxn) Commit(commitVer uint64) error {
 	return err
 }
 
+func (t *MemMergeTxn) CreateSavepoint(name string) error {
+	if t.memdb == nil {
+		return ErrNotBegin
+	}
+	return t.memdb.CreateSavepoint(name)
+}
+
+func (t *MemMergeTxn) DeleteSavepoint(name string) error {
+	if t.memdb == nil {
+		return ErrNotBegin
+	}
+	return t.memdb.DeleteSavepoint(name)
+}
+
+func (t *MemMergeTxn) RollbackToSavepoint(name string) error {
+	if t.memdb == nil {
+		return ErrNotBegin
+	}
+	return t.memdb.RollbackToSavepoint(name)
+}
+
 func (t *MemMergeTxn) LockKey(key []byte) error {
 	err := t.lockKey(key)
 	if err != nil {

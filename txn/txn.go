@@ -37,6 +37,9 @@ type Cursor interface {
 type Txn interface {
 	Begin() error
 	Commit(ver uint64) error
+	CreateSavepoint(name string) error
+	DeleteSavepoint(name string) error
+	RollbackToSavepoint(name string) error
 	Rollback() error
 	Set(key []byte, value []byte) error
 	Get(key []byte) (value []byte, err error)
