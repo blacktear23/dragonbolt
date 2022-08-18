@@ -58,7 +58,8 @@ dragonbolt 使用 boltdb 作为基础的 Key-Value 存储，用 dragonboat 实�
 | txn.mget, tmget		| [key1] [key2] ...		| 批量获取 Key 的 Value |
 | txn.scan, tscan		| [start] [end] limit [limit]	| 扫描从 start 开始，到 end 结尾的 Key，并列出 limit 个 Key. <br/> 其中 end 和 limit [limit] 为可选参数 |
 | txn.commit, commit |					| 提交事务 |
-| txn.rollback, rollback |					| 回滚事务 |
+| txn.savepoint, savepoint | [savepoint] | 创建 savepoint，用于回滚到指定 savepoint |
+| txn.rollback, rollback |	[savepoint]	| 回滚事务，或回滚到指定的 Savepoint |
 | txn.lock, tlock		| [key]				| 锁定 Key |
 | txn.unlock, tunlock	| [key]				| 解锁 Key |
 
