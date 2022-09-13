@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	dcfg "github.com/blacktear23/dragonbolt/config"
 	"github.com/blacktear23/dragonbolt/kv"
 	"github.com/blacktear23/dragonbolt/server"
 	"github.com/blacktear23/dragonbolt/store"
@@ -24,15 +25,6 @@ import (
 	"github.com/lni/dragonboat/v4/config"
 	"github.com/lni/dragonboat/v4/logger"
 	"github.com/lni/goutils/syncutil"
-)
-
-var (
-	// initial nodes count is fixed to three, their addresses are also fixed
-	addresses = []string{
-		"localhost:63001",
-		"localhost:63002",
-		"localhost:63003",
-	}
 )
 
 const (
@@ -165,57 +157,86 @@ func listAllShards(tsoSrv *tso.TSOServer) []uint64 {
 
 func main() {
 	var (
-		replicaID int
-		addr      string
-		join      bool
-		dbDir     string
-		redisAddr string
-		walDir    string
-		rtt       int
+		replicaID  int
+		addr       string
+		join       bool
+		dbDir      string
+		walDir     string
+		configFile string
 	)
+	flag.StringVar(&configFile, "cfg", "config.yaml", "Config file name")
 	flag.IntVar(&replicaID, "replica-id", 1, "Replica ID to use")
-	flag.IntVar(&rtt, "rtt", 100, "RTT")
 	flag.StringVar(&addr, "addr", "", "Nodehost address")
-	flag.StringVar(&walDir, "wal-dir", "/tmp/sample/wal", "WAL directory")
-	flag.StringVar(&dbDir, "db-dir", "/tmp/sample/db", "Database file path")
+	flag.StringVar(&walDir, "wal-dir", "", "WAL directory")
+	flag.StringVar(&dbDir, "db-dir", "", "Database file path")
 	flag.BoolVar(&join, "join", false, "Joining a new node")
-	flag.StringVar(&redisAddr, "redis-addr", "", "Redis Server listen address")
 	flag.Parse()
-	if dbDir == "" {
-		fmt.Println("Require -db-dir parameter")
-		return
+
+	cfg, err := dcfg.NewConfig(configFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = cfg.Check()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Check WAL Dir
+	if walDir != "" {
+		cfg.WalDir = walDir
+	}
+
+	if cfg.WalDir == "" {
+		log.Fatal("Require wal directory")
+	}
+
+	// Check DB Dir
+	if dbDir != "" {
+		cfg.DBDir = dbDir
+	}
+
+	// Check Listen
+	if addr != "" {
+		cfg.Listen = addr
+	}
+
+	if cfg.DBDir == "" {
+		log.Fatal("Require database directory")
 	} else {
-		err := os.MkdirAll(dbDir, 0755)
+		err := os.MkdirAll(cfg.DBDir, 0755)
 		if err != nil {
 			log.Fatal("Cannot create db dir", err)
 		}
 	}
+
 	initMembers := make(map[uint64]string)
 	if !join {
-		for idx, v := range addresses {
+		for idx, v := range cfg.Members {
 			initMembers[uint64(idx+1)] = v
 		}
 	}
 	var nodeAddr string
-	if len(addr) != 0 {
-		nodeAddr = addr
+	if len(cfg.Listen) != 0 {
+		nodeAddr = cfg.Listen
 	} else {
 		nodeAddr = initMembers[uint64(replicaID)]
 	}
-	log.Printf("Node address: %s", nodeAddr)
 	logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
 	logger.GetLogger("raft").SetLevel(logger.ERROR)
 	logger.GetLogger("rsm").SetLevel(logger.ERROR)
 	logger.GetLogger("transport").SetLevel(logger.ERROR)
 	logger.GetLogger("grpc").SetLevel(logger.ERROR)
+
 	datadir := filepath.Join(
-		walDir,
+		cfg.WalDir,
 		fmt.Sprintf("node-%d", replicaID),
 	)
+	log.Printf("Node address: %s", nodeAddr)
+	log.Printf("WAL Directory: %s", datadir)
 	nhc := config.NodeHostConfig{
 		WALDir:         datadir,
 		NodeHostDir:    datadir,
-		RTTMillisecond: uint64(rtt),
+		RTTMillisecond: uint64(cfg.RTT),
 		RaftAddress:    nodeAddr,
 	}
 	nh, err := dragonboat.NewNodeHost(nhc)
@@ -223,11 +244,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	sm := store.NewStoreManager(dbDir, join)
+	sm := store.NewStoreManager(cfg.DBDir, join)
 	defer sm.Close()
 
 	// Start TSO
-	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), dbDir, initMembers, exampleShardID+1, sm, join)
+	tsoServer, err := tso.NewTSOServer(nh, tsoShardID, uint64(replicaID), cfg.DBDir, initMembers, exampleShardID+1, sm, join)
 	if err != nil {
 		log.Fatal("Start TSO Server error", err)
 	}
@@ -247,10 +268,10 @@ func main() {
 	startRestStores(tsoServer, sm, nh, initMembers, uint64(replicaID))
 
 	var rs *server.RedisServer = nil
-	if redisAddr != "" {
-		rs = server.NewRedisServer(redisAddr, nh, exampleShardID, tsoServer, sm)
+	if cfg.RedisListen != "" {
+		rs = server.NewRedisServer(cfg.RedisListen, nh, exampleShardID, tsoServer, sm)
 		rs.Run()
-		log.Println("Start Redis Server for", redisAddr)
+		log.Println("Start Redis Server for", cfg.RedisListen)
 	}
 
 	raftStopper := syncutil.NewStopper()

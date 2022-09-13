@@ -1,0 +1,19 @@
+---
+# Initial members
+members:
+  - 127.0.0.1:63001
+
+# RTT for raft
+rtt: 100
+
+# Listen address for raft server
+listen: "127.0.0.1:63001"
+
+# Listen address for redis server
+redis_listen: ":3456"
+
+# WAL directory
+wal_dir: /tmp/sample/wal
+
+# Database directory
+db_dir: /tmp/sample/db

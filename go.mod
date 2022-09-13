@@ -7,6 +7,7 @@ require (
 	github.com/igrmk/treemap/v2 v2.0.1
 	github.com/lni/dragonboat/v4 v4.0.0-20220724134658-ed44d312daa2
 	github.com/lni/goutils v1.3.1-0.20220604063047-388d67b4dbc4
+	gopkg.in/yaml.v2 v2.3.0
 )
 
 require (
