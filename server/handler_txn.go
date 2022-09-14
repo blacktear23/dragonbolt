@@ -5,12 +5,52 @@ import (
 
 	"github.com/blacktear23/dragonbolt/kv"
 	"github.com/blacktear23/dragonbolt/protocol"
+	"github.com/blacktear23/dragonbolt/txn"
 )
 
-func (c *rclient) handleTxnSet(args []protocol.Encodable) protocol.Encodable {
+func (c *rclient) autoBegin() (bool, error) {
 	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
+		level := ISO_LEVEL_RR
+		txnVer, err := c.getTso()
+		if err != nil {
+			return false, err
+		}
+		c.txnVer = txnVer
+		txn := txn.NewMemMergeTxn(c.newMvccTxnOps(level, c.txnVer), kv.MVCC_SET, kv.MVCC_DEL, c.txnVer)
+		err = txn.Begin()
+		if err != nil {
+			return false, err
+		}
+		c.txn = txn
+		return true, nil
 	}
+	return false, nil
+}
+
+func (c *rclient) autoCommit() error {
+	if c.txn != nil {
+		commitVer, err := c.getTso()
+		if err != nil {
+			return err
+		}
+		c.txn.Commit(commitVer)
+		c.txn = nil
+		c.txnVer = 0
+	}
+	return nil
+}
+
+func (c *rclient) autoRollback() error {
+	if c.txn != nil {
+		err := c.txn.Rollback()
+		c.txn = nil
+		c.txnVer = 0
+		return err
+	}
+	return nil
+}
+
+func (c *rclient) handleTxnSet(args []protocol.Encodable) protocol.Encodable {
 	if len(args) < 2 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -22,17 +62,27 @@ func (c *rclient) handleTxnSet(args []protocol.Encodable) protocol.Encodable {
 	if !ok {
 		return protocol.NewSimpleError("Invalid data")
 	}
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
 	err = c.txn.Set(key, val.Bytes())
 	if err != nil {
+		if autoCommit {
+			c.autoRollback()
+		}
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
+	}
+	if autoCommit {
+		err := c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
 	}
 	return protocol.NewSimpleString("OK")
 }
 
 func (c *rclient) handleTxnGet(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
 	if len(args) < 1 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -40,9 +90,23 @@ func (c *rclient) handleTxnGet(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
+
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
 	value, err := c.txn.Get(key)
 	if err != nil {
+		if autoCommit {
+			c.autoRollback()
+		}
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
+	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
 	}
 	if value == nil {
 		return protocol.NewNull()
@@ -51,9 +115,6 @@ func (c *rclient) handleTxnGet(args []protocol.Encodable) protocol.Encodable {
 }
 
 func (c *rclient) handleTxnDelete(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
 	if len(args) < 1 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -61,17 +122,28 @@ func (c *rclient) handleTxnDelete(args []protocol.Encodable) protocol.Encodable 
 	if err != nil {
 		return protocol.NewSimpleError(err.Error())
 	}
+
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
 	err = c.txn.Delete(key)
 	if err != nil {
+		if autoCommit {
+			c.autoRollback()
+		}
 		return protocol.NewSimpleErrorf("Internal Error: %v", err)
+	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
 	}
 	return protocol.NewSimpleString("OK")
 }
 
 func (c *rclient) handleTxnScan(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
 	scanHelp := "TSCAN StartKey [EndKey] [LIMIT lim]"
 	if len(args) < 1 {
 		return protocol.NewSimpleErrorf("Invalid start key parameters, %s", scanHelp)
@@ -116,18 +188,31 @@ func (c *rclient) handleTxnScan(args []protocol.Encodable) protocol.Encodable {
 			return protocol.NewSimpleErrorf("Invalid limit parameters, %s", scanHelp)
 		}
 	}
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
 	iter, err := c.txn.Cursor()
 	if err != nil {
+		if autoCommit {
+			c.autoRollback()
+		}
 		return protocol.NewSimpleErrorf("Internal error: %v", err)
 	}
 	err = iter.Seek(startKey)
 	if err != nil {
+		if autoCommit {
+			c.autoRollback()
+		}
 		return protocol.NewSimpleErrorf("Internal error: %v", err)
 	}
 	ret := protocol.Array{}
 	for i := int64(0); i < limit; i++ {
 		key, _, err := iter.Next()
 		if err != nil {
+			if autoCommit {
+				c.autoRollback()
+			}
 			return protocol.NewSimpleErrorf("Internal error: %v", err)
 		}
 		if key == nil {
@@ -138,13 +223,16 @@ func (c *rclient) handleTxnScan(args []protocol.Encodable) protocol.Encodable {
 		}
 		ret = append(ret, protocol.NewBlobString(key))
 	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
+	}
 	return ret
 }
 
 func (c *rclient) handleTxnMset(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
 	if len(args) < 2 || len(args)%2 != 0 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -163,16 +251,23 @@ func (c *rclient) handleTxnMset(args []protocol.Encodable) protocol.Encodable {
 			Value: val.Bytes(),
 		})
 	}
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
 	for _, kv := range kvs {
 		c.txn.Set(kv.Key, kv.Value)
+	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
 	}
 	return protocol.NewSimpleString("OK")
 }
 
 func (c *rclient) handleTxnMget(args []protocol.Encodable) protocol.Encodable {
-	if c.txn == nil {
-		return protocol.NewSimpleError("Transaction not begin")
-	}
 	if len(args) < 1 {
 		return protocol.NewSimpleError("Need more arguments")
 	}
@@ -184,16 +279,29 @@ func (c *rclient) handleTxnMget(args []protocol.Encodable) protocol.Encodable {
 		}
 		keys = append(keys, key)
 	}
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
 	ret := protocol.Array{}
 	for _, key := range keys {
 		value, err := c.txn.Get(key)
 		if err != nil {
+			if autoCommit {
+				c.autoRollback()
+			}
 			return protocol.NewSimpleErrorf("Internal Error: %v", err)
 		}
 		if value == nil {
 			ret = append(ret, protocol.NewNull())
 		} else {
 			ret = append(ret, protocol.NewBlobString(value))
+		}
+	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
 		}
 	}
 	return ret

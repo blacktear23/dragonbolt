@@ -14,22 +14,22 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return protocol.NewSimpleString("PONG")
 	case "config":
 		return protocol.NewSimpleString("OK")
-	case "get":
-		return c.handleGet(args)
-	case "set":
-		return c.handleSet(args)
-	case "del":
-		return c.handleDel(args)
-	case "mget":
-		return c.handleMget(args)
-	case "mset":
-		return c.handleMset(args)
+	// case "get":
+	// 	return c.handleGet(args)
+	// case "set":
+	// 	return c.handleSet(args)
+	// case "del":
+	// 	return c.handleDel(args)
+	// case "mget":
+	// 	return c.handleMget(args)
+	// case "mset":
+	// 	return c.handleMset(args)
 	case "inc", "incr":
 		return c.handleIncDec(args, 1)
 	case "dec", "decr":
 		return c.handleIncDec(args, -1)
-	case "scan":
-		return c.handleScan(args)
+	// case "scan":
+	// 	return c.handleScan(args)
 	case "cf.set":
 		return c.handleCfSet(args)
 	case "cf.get":
@@ -42,17 +42,17 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleCfScan(args, true)
 	case "begin", "txn.begin":
 		return c.handleBegin(args)
-	case "tset", "txn.set":
+	case "set", "tset", "txn.set":
 		return c.handleTxnSet(args)
-	case "tget", "txn.get":
+	case "get", "tget", "txn.get":
 		return c.handleTxnGet(args)
-	case "tmset", "txn.mset":
+	case "mset", "tmset", "txn.mset":
 		return c.handleTxnMset(args)
-	case "tmget", "txn.mget":
+	case "mget", "tmget", "txn.mget":
 		return c.handleTxnMget(args)
-	case "tdel", "txn.del":
+	case "del", "tdel", "txn.del":
 		return c.handleTxnDelete(args)
-	case "tscan", "txn.scan":
+	case "scan", "tscan", "txn.scan":
 		return c.handleTxnScan(args)
 	case "tlock", "txn.lock":
 		return c.handleTxnLock(args)
