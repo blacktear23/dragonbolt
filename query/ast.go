@@ -1,5 +1,7 @@
 package query
 
+import "fmt"
+
 /*
 Query Examples:
 	query 'where key ^= "test"'        // key prefix match
@@ -16,16 +18,23 @@ const (
 	ValueKW KVKeyword = 2
 
 	Unknown     Operator = 0
-	Eq          Operator = 1
-	And         Operator = 2
-	Or          Operator = 3
-	PrefixMatch Operator = 4
-	RegExpMatch Operator = 5
+	And         Operator = 1
+	Or          Operator = 2
+	Eq          Operator = 3
+	NotEq       Operator = 4
+	PrefixMatch Operator = 5
+	RegExpMatch Operator = 6
 )
 
 var (
+	KVKeywordToString = map[KVKeyword]string{
+		KeyKW:   "KEY",
+		ValueKW: "VALUE",
+	}
+
 	OperatorToString = map[Operator]string{
 		Eq:          "=",
+		NotEq:       "!=",
 		And:         "&",
 		Or:          "|",
 		PrefixMatch: "^=",
@@ -38,6 +47,7 @@ var (
 		"|":  Or,
 		"^=": PrefixMatch,
 		"~=": RegExpMatch,
+		"!=": NotEq,
 	}
 )
 
@@ -52,37 +62,60 @@ func BuildOp(op string) (Operator, error) {
 /*
 query: where key ^= "test" & value ~= "test"
 WhereStmt {
-	Expr: {
-		Compares: [
-			KVCompareExpr{
-				Left: Key,
-				Right: "test",
-				Op: PrefixMatch,
-			},
-			KVCompareExpr{
-				Left: Value,
-				Right: "test",
-				Op: RegexpMatch,
-			},
-		],
-		JoinOperators: [
-			And,
-		],
+	Expr: CompareExpr {
+		Op: "&",
+		Left: CompareExpr {
+			Op: "^=",
+			Left: FieldExpr{Field: KEY},
+			Right: StringExpr{Data: "test"},
+		},
+		Right: CompareExpr {
+			Op: "~=",
+			Left: FieldExpr{Field: VALUE},
+			Right: StringExpr{Data: "test"},
+		}
 	},
 }
 */
 
+var (
+	_ Expression = (*CompareExpr)(nil)
+	_ Expression = (*FieldExpr)(nil)
+	_ Expression = (*StringExpr)(nil)
+)
+
+type Expression interface {
+	String() string
+	Execute(kv KVPair) (any, error)
+}
+
 type WhereStmt struct {
-	Expr *Expression
+	Expr Expression
 }
 
-type Expression struct {
-	Compares      []KVCompareExpr
-	JoinOperators []Operator
-}
-
-type KVCompareExpr struct {
+type CompareExpr struct {
 	Op    Operator
-	Left  KVKeyword
-	Right string
+	Left  Expression
+	Right Expression
+}
+
+func (e *CompareExpr) String() string {
+	op := OperatorToString[e.Op]
+	return fmt.Sprintf("{%s %s %s}", e.Left.String(), op, e.Right.String())
+}
+
+type FieldExpr struct {
+	Field KVKeyword
+}
+
+func (e *FieldExpr) String() string {
+	return fmt.Sprintf("%s", KVKeywordToString[e.Field])
+}
+
+type StringExpr struct {
+	Data string
+}
+
+func (e *StringExpr) String() string {
+	return fmt.Sprintf("`%s`", e.Data)
 }

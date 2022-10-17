@@ -45,83 +45,146 @@ func (e *FilterExec) Filter(kvp KVPair) (bool, error) {
 }
 
 func (e *FilterExec) FilterBatch(kvps []KVPair) ([]bool, error) {
-	if len(e.Ast.Expr.Compares) == 0 {
-		return nil, ErrNoCompareExists
-	}
 	ret := make([]bool, len(kvps))
 	for idx, kvp := range kvps {
-		compRets := make([]bool, len(e.Ast.Expr.Compares))
-		for i, kvc := range e.Ast.Expr.Compares {
-			cmpRet, err := e.executeCompare(kvc, kvp)
-			if err != nil {
-				return nil, err
-			}
-			compRets[i] = cmpRet
+		result, err := e.Ast.Expr.Execute(kvp)
+		if err != nil {
+			return nil, err
 		}
-		if len(compRets) > 1 {
-			left := compRets[0]
-			for i, right := range compRets[1:] {
-				if i >= len(e.Ast.Expr.JoinOperators) {
-					return nil, ErrNotEnoughOperators
-				}
-				op := e.Ast.Expr.JoinOperators[i]
-				switch op {
-				case And:
-					left = left && right
-				case Or:
-					left = left || right
-				}
-			}
-			ret[idx] = left
-		} else {
-			ret[idx] = compRets[0]
+		bresult, ok := result.(bool)
+		if !ok {
+			return nil, errors.New("Expression result is not boolean")
 		}
+		ret[idx] = bresult
 	}
 	return ret, nil
 }
 
-func (e *FilterExec) executeCompare(kvc KVCompareExpr, kvp KVPair) (bool, error) {
-	switch kvc.Op {
+func (e *StringExpr) Execute(kv KVPair) (any, error) {
+	return []byte(e.Data), nil
+}
+
+func (e *FieldExpr) Execute(kv KVPair) (any, error) {
+	switch e.Field {
+	case KeyKW:
+		return kv.Key, nil
+	case ValueKW:
+		return kv.Value, nil
+	}
+	return nil, errors.New("Invalid Field")
+}
+
+func (e *CompareExpr) Execute(kv KVPair) (any, error) {
+	switch e.Op {
 	case Eq:
-		return e.execEqualCmp(kvc, kvp)
+		return e.execEqual(kv)
+	case NotEq:
+		return e.execNotEqual(kv)
 	case PrefixMatch:
-		return e.execPrefixMatch(kvc, kvp)
+		return e.execPrefixMatch(kv)
 	case RegExpMatch:
-		return e.execRegexpMatch(kvc, kvp)
+		return e.execRegexpMatch(kv)
+	case And:
+		return e.execAnd(kv)
+	case Or:
+		return e.execOr(kv)
 	}
-	return false, ErrUnsupportCompareOperator
+	return nil, errors.New("Unknown operator")
 }
 
-func (e *FilterExec) execEqualCmp(kvc KVCompareExpr, kvp KVPair) (bool, error) {
-	switch kvc.Left {
-	case KeyKW:
-		return bytes.Equal(kvp.Key, []byte(kvc.Right)), nil
-	case ValueKW:
-		return bytes.Equal(kvp.Value, []byte(kvc.Right)), nil
-	}
-	return false, ErrUnknownLeftKeyword
-}
-
-func (e *FilterExec) execPrefixMatch(kvc KVCompareExpr, kvp KVPair) (bool, error) {
-	switch kvc.Left {
-	case KeyKW:
-		return bytes.HasPrefix(kvp.Key, []byte(kvc.Right)), nil
-	case ValueKW:
-		return bytes.HasPrefix(kvp.Value, []byte(kvc.Right)), nil
-	}
-	return false, ErrUnknownLeftKeyword
-}
-
-func (e *FilterExec) execRegexpMatch(kvc KVCompareExpr, kvp KVPair) (bool, error) {
-	re, err := regexp.Compile(kvc.Right)
+func (e *CompareExpr) execEqual(kv KVPair) (bool, error) {
+	rleft, err := e.Left.Execute(kv)
 	if err != nil {
 		return false, err
 	}
-	switch kvc.Left {
-	case KeyKW:
-		return re.Match(kvp.Key), nil
-	case ValueKW:
-		return re.Match(kvp.Value), nil
+	rright, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
 	}
-	return false, ErrUnknownLeftKeyword
+	left, lok := rleft.([]byte)
+	right, rok := rright.([]byte)
+	if !lok || !rok {
+		return false, errors.New("= left value error")
+	}
+	return bytes.Equal(left, right), nil
+}
+
+func (e *CompareExpr) execNotEqual(kv KVPair) (bool, error) {
+	ret, err := e.execEqual(kv)
+	if err != nil {
+		return false, err
+	}
+	return !ret, nil
+}
+
+func (e *CompareExpr) execPrefixMatch(kv KVPair) (bool, error) {
+	rleft, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	rright, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	left, lok := rleft.([]byte)
+	right, rok := rright.([]byte)
+	if !lok || !rok {
+		return false, errors.New("^= left value error")
+	}
+	return bytes.HasPrefix(left, right), nil
+}
+
+func (e *CompareExpr) execRegexpMatch(kv KVPair) (bool, error) {
+	rleft, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	rright, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	left, lok := rleft.([]byte)
+	right, rok := rright.([]byte)
+	if !lok || !rok {
+		return false, errors.New("~= left value error")
+	}
+	re, err := regexp.Compile(string(right))
+	if err != nil {
+		return false, err
+	}
+	return re.Match(left), nil
+}
+
+func (e *CompareExpr) execAnd(kv KVPair) (bool, error) {
+	rleft, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	rright, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	left, lok := rleft.(bool)
+	right, rok := rright.(bool)
+	if !lok || !rok {
+		return false, errors.New("& left value error")
+	}
+	return left && right, nil
+}
+
+func (e *CompareExpr) execOr(kv KVPair) (bool, error) {
+	rleft, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	rright, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	left, lok := rleft.(bool)
+	right, rok := rright.(bool)
+	if !lok || !rok {
+		return false, errors.New("| left value error")
+	}
+	return left || right, nil
 }

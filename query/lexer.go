@@ -13,6 +13,8 @@ const (
 	VALUE    TokenType = 3
 	OPERATOR TokenType = 4
 	STRING   TokenType = 5
+	LBRACE   TokenType = 6
+	RBRACE   TokenType = 7
 )
 
 var (
@@ -22,6 +24,8 @@ var (
 		VALUE:    "value",
 		OPERATOR: "op",
 		STRING:   "str",
+		LBRACE:   "(",
+		RBRACE:   ")",
 	}
 )
 
@@ -107,6 +111,12 @@ func (l *Lexer) Split() []*Token {
 						Data: "~=",
 						Pos:  i - 1,
 					}
+				case '!':
+					token = &Token{
+						Tp:   OPERATOR,
+						Data: "!=",
+						Pos:  i - 1,
+					}
 				default:
 					token = &Token{
 						Tp:   OPERATOR,
@@ -119,18 +129,34 @@ func (l *Lexer) Split() []*Token {
 				}
 			}
 			tokStartPos = i + 1
-		case '&', '|':
+		case '&', '|', '(', ')':
 			if strStart {
 				curr += string(char)
 				break
 			}
-			if token := buildToken(curr, tokStartPos); token != nil {
+			token := buildToken(curr, tokStartPos)
+			if token != nil {
 				ret = append(ret, token)
 			}
-			token := &Token{
-				Tp:   OPERATOR,
-				Data: string(char),
-				Pos:  i,
+			if char == '(' {
+				token = &Token{
+					Tp:   LBRACE,
+					Data: string(char),
+					Pos:  i,
+				}
+
+			} else if char == ')' {
+				token = &Token{
+					Tp:   RBRACE,
+					Data: string(char),
+					Pos:  i,
+				}
+			} else {
+				token = &Token{
+					Tp:   OPERATOR,
+					Data: string(char),
+					Pos:  i,
+				}
 			}
 			ret = append(ret, token)
 			curr = ""
