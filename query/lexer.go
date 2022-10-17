@@ -15,6 +15,8 @@ const (
 	STRING   TokenType = 5
 	LBRACE   TokenType = 6
 	RBRACE   TokenType = 7
+	NAME     TokenType = 8
+	SEP      TokenType = 9
 )
 
 var (
@@ -26,6 +28,8 @@ var (
 		STRING:   "str",
 		LBRACE:   "(",
 		RBRACE:   ")",
+		NAME:     "name",
+		SEP:      "SEP",
 	}
 )
 
@@ -37,7 +41,7 @@ type Token struct {
 
 func (t *Token) String() string {
 	tp := TokenTypeToString[t.Tp]
-	return fmt.Sprintf("Tp: %s, Data: %s, Pos: %d", tp, t.Data, t.Pos)
+	return fmt.Sprintf("Tp: %6s  Data: %10s  Pos: %d", tp, t.Data, t.Pos)
 }
 
 type Lexer struct {
@@ -176,6 +180,23 @@ func (l *Lexer) Split() []*Token {
 			ret = append(ret, token)
 			curr = ""
 			tokStartPos = i + 1
+		case ',':
+			if strStart {
+				curr += string(char)
+				break
+			}
+			token := buildToken(curr, tokStartPos)
+			if token != nil {
+				ret = append(ret, token)
+			}
+			token = &Token{
+				Tp:   SEP,
+				Data: ",",
+				Pos:  i,
+			}
+			ret = append(ret, token)
+			curr = ""
+			tokStartPos = i + 1
 		default:
 			curr += string(char)
 		}
@@ -207,6 +228,9 @@ func buildToken(curr string, pos int) *Token {
 		return token
 	case "value":
 		token.Tp = VALUE
+		return token
+	default:
+		token.Tp = NAME
 		return token
 	}
 	return nil

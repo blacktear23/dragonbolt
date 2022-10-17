@@ -2,6 +2,7 @@ package query
 
 import (
 	"errors"
+	"fmt"
 )
 
 var (
@@ -41,6 +42,10 @@ func (p *Parser) next() *Token {
 	ret := p.toks[p.pos]
 	p.pos += 1
 	return ret
+}
+
+func (p *Parser) curr() *Token {
+	return p.toks[p.pos-1]
 }
 
 func (p *Parser) hasNext() bool {
@@ -140,6 +145,27 @@ func (p *Parser) parseBlock(endWithBrace bool, i int) (Expression, error) {
 					return expr, nil
 				}
 			}
+		case NAME:
+			nextTok := p.next()
+			if nextTok.Tp != LBRACE {
+				return nil, errors.New("function name should follow (")
+			}
+			if expr != nil {
+				return nil, errors.New("function call should not have left expression")
+			}
+			// fmt.Println(i, "ARG")
+			args, err := p.parseArgs(i + 1)
+			if err != nil {
+				return nil, err
+			}
+			// fmt.Println(i, "~ARG", args)
+			expr = &FunctionCallExpr{
+				Name: tok.Data,
+				Args: args,
+			}
+			if endWithBrace {
+				return expr, nil
+			}
 		case LBRACE:
 			// fmt.Println(i, "LBRACE", expr)
 			expr, err = p.parseBlock(true, i+1)
@@ -153,11 +179,46 @@ func (p *Parser) parseBlock(endWithBrace bool, i int) (Expression, error) {
 				return expr, nil
 			}
 			break
+		case SEP:
+			// fmt.Println(i, endWithBrace, "SEP", expr)
+			if endWithBrace {
+				return expr, nil
+			}
+			return nil, fmt.Errorf("SEP exists %d", i)
 		default:
 			return nil, ErrSyntaxInvalidSyntax
 		}
 	}
 	return expr, nil
+}
+
+func (p *Parser) parseArgs(i int) ([]Expression, error) {
+	ret := make([]Expression, 0, 3)
+	for {
+		expr, err := p.parseBlock(true, i)
+		if err != nil {
+			return nil, err
+		}
+		if expr == nil {
+			break
+		}
+		ret = append(ret, expr)
+		ctok := p.curr()
+		if ctok.Tp == SEP {
+			continue
+		} else if ctok.Tp == RBRACE {
+			ntok := p.next()
+			if ntok == nil {
+				break
+			}
+			if ntok.Tp != SEP {
+				p.back()
+				break
+			}
+			break
+		}
+	}
+	return ret, nil
 }
 
 func (p *Parser) parseRight(i int) (Expression, error) {

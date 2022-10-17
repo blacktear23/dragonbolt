@@ -64,3 +64,53 @@ func TestParser6(t *testing.T) {
 	}
 	fmt.Printf("%+v\n", expr.Expr.String())
 }
+
+func TestParser7(t *testing.T) {
+	query := "where func_name(key, 'test')"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Expr.String())
+}
+
+func TestParser8(t *testing.T) {
+	query := "where func_name(key, 'test') ^= 'name'"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Expr.String())
+}
+
+func TestParser9(t *testing.T) {
+	query := "where (func_name(key, 'test') ^= 'name' & (func_name2(value) | value ^= 't'"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Expr.String())
+}
+
+func TestParser10(t *testing.T) {
+	query := "where func1(func2(key), '')"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Expr.String())
+}
+
+func TestParser11(t *testing.T) {
+	query := "where func1(func2(key), '', func3(func4('1', '2'), '5'))"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Expr.String())
+}

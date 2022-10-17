@@ -200,3 +200,7 @@ func (e *NotExpr) Execute(kv KVPair) (any, error) {
 	}
 	return !right, nil
 }
+
+func (e *FunctionCallExpr) Execute(kv KVPair) (any, error) {
+	return nil, nil
+}

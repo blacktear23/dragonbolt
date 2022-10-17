@@ -1,6 +1,9 @@
 package query
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 /*
 Query Examples:
@@ -86,6 +89,7 @@ var (
 	_ Expression = (*FieldExpr)(nil)
 	_ Expression = (*StringExpr)(nil)
 	_ Expression = (*NotExpr)(nil)
+	_ Expression = (*FunctionCallExpr)(nil)
 )
 
 type Expression interface {
@@ -130,4 +134,17 @@ type NotExpr struct {
 
 func (e *NotExpr) String() string {
 	return fmt.Sprintf("!{%s}", e.Right.String())
+}
+
+type FunctionCallExpr struct {
+	Name string
+	Args []Expression
+}
+
+func (e *FunctionCallExpr) String() string {
+	args := make([]string, len(e.Args))
+	for i, expr := range e.Args {
+		args[i] = expr.String()
+	}
+	return fmt.Sprintf("[%s]{%s}", e.Name, strings.Join(args, ", "))
 }
