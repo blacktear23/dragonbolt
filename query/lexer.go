@@ -56,12 +56,18 @@ func (l *Lexer) Split() []*Token {
 	var (
 		curr        string
 		prev        byte
+		next        byte
 		ret         []*Token
 		strStart    bool = false
 		tokStartPos int
 	)
 	for i := 0; i < l.Length; i++ {
 		char := l.Query[i]
+		if i < l.Length-1 {
+			next = l.Query[i+1]
+		} else {
+			next = 0
+		}
 		switch char {
 		case ' ':
 			if strStart {
@@ -87,7 +93,7 @@ func (l *Lexer) Split() []*Token {
 				ret = append(ret, token)
 				curr = ""
 			}
-		case '~', '^', '=':
+		case '~', '^', '=', '!':
 			if strStart {
 				curr += string(char)
 				break
@@ -97,6 +103,16 @@ func (l *Lexer) Split() []*Token {
 			}
 			curr = ""
 			var token *Token = nil
+			if char == '!' && next != '=' {
+				token = &Token{
+					Tp:   OPERATOR,
+					Data: "!",
+					Pos:  i,
+				}
+				ret = append(ret, token)
+				tokStartPos = i + 1
+				break
+			}
 			if char == '=' {
 				switch prev {
 				case '^':
@@ -144,7 +160,6 @@ func (l *Lexer) Split() []*Token {
 					Data: string(char),
 					Pos:  i,
 				}
-
 			} else if char == ')' {
 				token = &Token{
 					Tp:   RBRACE,

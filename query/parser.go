@@ -121,6 +121,24 @@ func (p *Parser) parseBlock(endWithBrace bool, i int) (Expression, error) {
 					Right: right,
 				}
 				// fmt.Println(i, "~OPSTR", expr)
+			case "!":
+				tok = p.next()
+				if tok.Tp != LBRACE {
+					return nil, errors.New("! operator should follow (")
+				}
+				if expr != nil {
+					return nil, errors.New("! operator should not have left expression")
+				}
+				right, err := p.parseBlock(true, i+1)
+				if err != nil {
+					return nil, err
+				}
+				expr = &NotExpr{
+					Right: right,
+				}
+				if endWithBrace {
+					return expr, nil
+				}
 			}
 		case LBRACE:
 			// fmt.Println(i, "LBRACE", expr)

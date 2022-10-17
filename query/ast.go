@@ -20,10 +20,11 @@ const (
 	Unknown     Operator = 0
 	And         Operator = 1
 	Or          Operator = 2
-	Eq          Operator = 3
-	NotEq       Operator = 4
-	PrefixMatch Operator = 5
-	RegExpMatch Operator = 6
+	Not         Operator = 3
+	Eq          Operator = 4
+	NotEq       Operator = 5
+	PrefixMatch Operator = 6
+	RegExpMatch Operator = 7
 )
 
 var (
@@ -37,6 +38,7 @@ var (
 		NotEq:       "!=",
 		And:         "&",
 		Or:          "|",
+		Not:         "!",
 		PrefixMatch: "^=",
 		RegExpMatch: "~=",
 	}
@@ -45,6 +47,7 @@ var (
 		"=":  Eq,
 		"&":  And,
 		"|":  Or,
+		"!":  Not,
 		"^=": PrefixMatch,
 		"~=": RegExpMatch,
 		"!=": NotEq,
@@ -82,6 +85,7 @@ var (
 	_ Expression = (*CompareExpr)(nil)
 	_ Expression = (*FieldExpr)(nil)
 	_ Expression = (*StringExpr)(nil)
+	_ Expression = (*NotExpr)(nil)
 )
 
 type Expression interface {
@@ -118,4 +122,12 @@ type StringExpr struct {
 
 func (e *StringExpr) String() string {
 	return fmt.Sprintf("`%s`", e.Data)
+}
+
+type NotExpr struct {
+	Right Expression
+}
+
+func (e *NotExpr) String() string {
+	return fmt.Sprintf("!{%s}", e.Right.String())
 }

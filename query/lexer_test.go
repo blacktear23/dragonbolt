@@ -40,3 +40,12 @@ func TestLexer4(t *testing.T) {
 		fmt.Printf("%s\n", t.String())
 	}
 }
+
+func TestLexer5(t *testing.T) {
+	query := "where !(key^='test')"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}

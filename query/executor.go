@@ -188,3 +188,15 @@ func (e *CompareExpr) execOr(kv KVPair) (bool, error) {
 	}
 	return left || right, nil
 }
+
+func (e *NotExpr) Execute(kv KVPair) (any, error) {
+	rright, err := e.Right.Execute(kv)
+	if err != nil {
+		return nil, err
+	}
+	right, rok := rright.(bool)
+	if !rok {
+		return nil, errors.New("! right value error")
+	}
+	return !right, nil
+}

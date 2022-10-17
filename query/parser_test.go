@@ -54,3 +54,13 @@ func TestParser5(t *testing.T) {
 	}
 	fmt.Printf("%+v\n", expr.Expr.String())
 }
+
+func TestParser6(t *testing.T) {
+	query := "where !(key ^= 'test' | !(key ^= 'bar' & key ^= 'foo')) & value = 'xxx'"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Expr.String())
+}
