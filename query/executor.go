@@ -11,6 +11,7 @@ var (
 	ErrUnknownLeftKeyword       = errors.New("Unknown left keyword")
 	ErrUnsupportCompareOperator = errors.New("Unsupport compare operator")
 	ErrNoCompareExists          = errors.New("No compare expression exists")
+	ErrSyntaxUnknownOperator    = errors.New("Syntax Error: unknown operator")
 )
 
 type KVPair struct {
@@ -74,7 +75,7 @@ func (e *FieldExpr) Execute(kv KVPair) (any, error) {
 	return nil, errors.New("Invalid Field")
 }
 
-func (e *CompareExpr) Execute(kv KVPair) (any, error) {
+func (e *BinaryOpExpr) Execute(kv KVPair) (any, error) {
 	switch e.Op {
 	case Eq:
 		return e.execEqual(kv)
@@ -92,7 +93,7 @@ func (e *CompareExpr) Execute(kv KVPair) (any, error) {
 	return nil, errors.New("Unknown operator")
 }
 
-func (e *CompareExpr) execEqual(kv KVPair) (bool, error) {
+func (e *BinaryOpExpr) execEqual(kv KVPair) (bool, error) {
 	rleft, err := e.Left.Execute(kv)
 	if err != nil {
 		return false, err
@@ -109,7 +110,7 @@ func (e *CompareExpr) execEqual(kv KVPair) (bool, error) {
 	return bytes.Equal(left, right), nil
 }
 
-func (e *CompareExpr) execNotEqual(kv KVPair) (bool, error) {
+func (e *BinaryOpExpr) execNotEqual(kv KVPair) (bool, error) {
 	ret, err := e.execEqual(kv)
 	if err != nil {
 		return false, err
@@ -117,7 +118,7 @@ func (e *CompareExpr) execNotEqual(kv KVPair) (bool, error) {
 	return !ret, nil
 }
 
-func (e *CompareExpr) execPrefixMatch(kv KVPair) (bool, error) {
+func (e *BinaryOpExpr) execPrefixMatch(kv KVPair) (bool, error) {
 	rleft, err := e.Left.Execute(kv)
 	if err != nil {
 		return false, err
@@ -134,7 +135,7 @@ func (e *CompareExpr) execPrefixMatch(kv KVPair) (bool, error) {
 	return bytes.HasPrefix(left, right), nil
 }
 
-func (e *CompareExpr) execRegexpMatch(kv KVPair) (bool, error) {
+func (e *BinaryOpExpr) execRegexpMatch(kv KVPair) (bool, error) {
 	rleft, err := e.Left.Execute(kv)
 	if err != nil {
 		return false, err
@@ -155,7 +156,7 @@ func (e *CompareExpr) execRegexpMatch(kv KVPair) (bool, error) {
 	return re.Match(left), nil
 }
 
-func (e *CompareExpr) execAnd(kv KVPair) (bool, error) {
+func (e *BinaryOpExpr) execAnd(kv KVPair) (bool, error) {
 	rleft, err := e.Left.Execute(kv)
 	if err != nil {
 		return false, err
@@ -172,7 +173,7 @@ func (e *CompareExpr) execAnd(kv KVPair) (bool, error) {
 	return left && right, nil
 }
 
-func (e *CompareExpr) execOr(kv KVPair) (bool, error) {
+func (e *BinaryOpExpr) execOr(kv KVPair) (bool, error) {
 	rleft, err := e.Left.Execute(kv)
 	if err != nil {
 		return false, err
@@ -203,4 +204,8 @@ func (e *NotExpr) Execute(kv KVPair) (any, error) {
 
 func (e *FunctionCallExpr) Execute(kv KVPair) (any, error) {
 	return nil, nil
+}
+
+func (e *NameExpr) Execute(kv KVPair) (any, error) {
+	return e.Data, nil
 }

@@ -33,6 +33,12 @@ var (
 	}
 )
 
+const (
+	LowestPrec  = 0 // non-operators
+	UnaryPrec   = 6
+	HighestPrec = 7
+)
+
 type Token struct {
 	Tp   TokenType
 	Data string
@@ -42,6 +48,25 @@ type Token struct {
 func (t *Token) String() string {
 	tp := TokenTypeToString[t.Tp]
 	return fmt.Sprintf("Tp: %6s  Data: %10s  Pos: %d", tp, t.Data, t.Pos)
+}
+
+func (t *Token) Precedence() int {
+	switch t.Tp {
+	case OPERATOR:
+		switch t.Data {
+		case "|":
+			return 1
+		case "&":
+			return 2
+		case "=", "!=", "^=", "~=":
+			return 3
+		case "+", "-":
+			return 4
+		case "*", "/":
+			return 5
+		}
+	}
+	return LowestPrec
 }
 
 type Lexer struct {

@@ -68,14 +68,14 @@ func BuildOp(op string) (Operator, error) {
 /*
 query: where key ^= "test" & value ~= "test"
 WhereStmt {
-	Expr: CompareExpr {
+	Expr: BinaryOpExpr {
 		Op: "&",
-		Left: CompareExpr {
+		Left: BinaryOpExpr {
 			Op: "^=",
 			Left: FieldExpr{Field: KEY},
 			Right: StringExpr{Data: "test"},
 		},
-		Right: CompareExpr {
+		Right: BinaryOpExpr {
 			Op: "~=",
 			Left: FieldExpr{Field: VALUE},
 			Right: StringExpr{Data: "test"},
@@ -85,11 +85,12 @@ WhereStmt {
 */
 
 var (
-	_ Expression = (*CompareExpr)(nil)
+	_ Expression = (*BinaryOpExpr)(nil)
 	_ Expression = (*FieldExpr)(nil)
 	_ Expression = (*StringExpr)(nil)
 	_ Expression = (*NotExpr)(nil)
 	_ Expression = (*FunctionCallExpr)(nil)
+	_ Expression = (*NameExpr)(nil)
 )
 
 type Expression interface {
@@ -101,13 +102,13 @@ type WhereStmt struct {
 	Expr Expression
 }
 
-type CompareExpr struct {
+type BinaryOpExpr struct {
 	Op    Operator
 	Left  Expression
 	Right Expression
 }
 
-func (e *CompareExpr) String() string {
+func (e *BinaryOpExpr) String() string {
 	op := OperatorToString[e.Op]
 	return fmt.Sprintf("{%s %s %s}", e.Left.String(), op, e.Right.String())
 }
@@ -137,7 +138,7 @@ func (e *NotExpr) String() string {
 }
 
 type FunctionCallExpr struct {
-	Name string
+	Name Expression
 	Args []Expression
 }
 
@@ -146,5 +147,13 @@ func (e *FunctionCallExpr) String() string {
 	for i, expr := range e.Args {
 		args[i] = expr.String()
 	}
-	return fmt.Sprintf("[%s]{%s}", e.Name, strings.Join(args, ", "))
+	return fmt.Sprintf("[%s]{%s}", e.Name.String(), strings.Join(args, ", "))
+}
+
+type NameExpr struct {
+	Data string
+}
+
+func (e *NameExpr) String() string {
+	return fmt.Sprintf("%s", e.Data)
 }
