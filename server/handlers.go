@@ -74,6 +74,8 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleCurrentDB(args)
 	case "db.del", "db.delete":
 		return c.handleDeleteDB(args)
+	case "query":
+		return c.handleQuery(args)
 	default:
 		return protocol.NewSimpleErrorf("Unsupport command: %s", cmd)
 	}
