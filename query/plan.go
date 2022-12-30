@@ -3,6 +3,7 @@ package query
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/blacktear23/dragonbolt/txn"
 )
@@ -133,4 +134,57 @@ func (p *PrefixScanPlan) Next() ([]byte, []byte, error) {
 
 func (p *PrefixScanPlan) String() string {
 	return fmt.Sprintf("PrefixScanPlan{Prefix = '%s'}", p.Prefix)
+}
+
+type MultiGetPlan struct {
+	Txn     txn.Txn
+	Filter  *FilterExec
+	Keys    []string
+	numKeys int
+	idx     int
+}
+
+func NewMultiGetPlan(t txn.Txn, f *FilterExec, keys []string) Plan {
+	return &MultiGetPlan{
+		Txn:     t,
+		Filter:  f,
+		Keys:    keys,
+		idx:     0,
+		numKeys: len(keys),
+	}
+}
+
+func (p *MultiGetPlan) Init() error {
+	return nil
+}
+
+func (p *MultiGetPlan) Next() ([]byte, []byte, error) {
+	for {
+		if p.idx >= p.numKeys {
+			break
+		}
+		key := []byte(p.Keys[p.idx])
+		p.idx++
+		val, err := p.Txn.Get(key)
+		if err != nil {
+			return nil, nil, err
+		}
+		if val == nil {
+			// No Value
+			continue
+		}
+		ok, err := p.Filter.Filter(NewKVP(key, val))
+		if err != nil {
+			return nil, nil, err
+		}
+		if ok {
+			return key, val, nil
+		}
+	}
+	return nil, nil, nil
+}
+
+func (p *MultiGetPlan) String() string {
+	keys := strings.Join(p.Keys, ", ")
+	return fmt.Sprintf("MultiGetPlan{Keys = %s}", keys)
 }

@@ -47,24 +47,30 @@ func (o *Optimizer) doOptimize(t txn.Txn) Plan {
 	w := &astWalker{keyEqs: map[string]bool{}}
 	w.walkAst(expr)
 	// fmt.Printf("[DEBUG] %+v\n", *w)
-	if w.numAnd > 0 && w.numOr == 0 && w.numKey > 1 && w.numValue == 0 && w.numKey == w.numEq {
+	if w.numAnd == 0 && w.numOr >= 0 && w.numCall == 0 && w.numKey > 0 && w.numValue == 0 && w.numPM == 0 && w.numReg == 0 && w.numKeyEq == w.numKey && w.numNot == 0 && w.numNeq == 0 {
+		// No and only ors no call, all key no prefix match and regexp, key equals == numKey means multi-get
+		return NewMultiGetPlan(t, o.filter, getKeys(w.keyEqs))
+	}
+
+	if w.numAnd > 0 && w.numOr == 0 && w.numKey > 1 && w.numValue == 0 && w.numKey == w.numEq && w.numNot == 0 && w.numNeq == 0 {
 		// All expression is key equals something with and operation
 		if len(w.keyEqs) == 1 {
-			return NewPrefixScanPlan(t, o.filter, getKeys(w.keyEqs)[0])
+			return NewMultiGetPlan(t, o.filter, getKeys(w.keyEqs))
 		}
 		return NewEmptyResultPlan(t, o.filter)
 	}
 
-	if w.numAnd == 0 && w.numOr == 0 && w.numKey >= 1 && w.numValue == 0 && w.numKey == w.numEq {
+	if w.numAnd == 0 && w.numOr == 0 && w.numKey >= 1 && w.numValue == 0 && w.numKey == w.numEq && w.numNot == 0 && w.numNeq == 0 {
 		if len(w.keyEqs) == 1 {
 			return NewPrefixScanPlan(t, o.filter, getKeys(w.keyEqs)[0])
 		}
 	}
 
-	if w.numAnd >= 0 && w.numOr == 0 && w.numCall == 0 && w.numKey == 1 && w.numKeyPM == w.numKey {
+	if w.numAnd >= 0 && w.numOr == 0 && w.numCall == 0 && w.numKey == 1 && w.numKeyPM == w.numKey && w.numNot == 0 && w.numNeq == 0 {
 		// Only one key prefix match and with other or with value field
 		return NewPrefixScanPlan(t, o.filter, w.keyPrefixes[0])
 	}
+
 	return NewFullScanPlan(t, o.filter)
 }
 
@@ -81,6 +87,8 @@ type astWalker struct {
 	numOr       int
 	numKey      int
 	numEq       int
+	numNeq      int
+	numNot      int
 	numKeyEq    int
 	numValue    int
 	numCall     int
@@ -105,6 +113,8 @@ func (w *astWalker) walkAst(expr Expression) {
 				w.numKeyEq++
 				w.keyEqs[val] = true
 			}
+		case NotEq:
+			w.numNeq++
 		case PrefixMatch:
 			w.numPM++
 			if has, prefix := w.getPrefixMatchPrefix(e, KeyKW); has {
@@ -124,6 +134,7 @@ func (w *astWalker) walkAst(expr Expression) {
 			w.numValue++
 		}
 	case *NotExpr:
+		w.numNot++
 		w.walkAst(e.Right)
 	case *FunctionCallExpr:
 		w.numCall++
