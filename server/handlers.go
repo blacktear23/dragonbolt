@@ -64,6 +64,8 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleTxnUnlock(args)
 	case "query", "txn.query":
 		return c.handleQuery(args)
+	case "explain", "txn.explain":
+		return c.handleExplain(args)
 	case "savepoint", "txn.savepoint":
 		return c.handleSavepoint(args)
 	case "commit", "txn.commit":
