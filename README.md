@@ -52,6 +52,7 @@ dragonbolt 使用 boltdb 作为基础的 Key-Value 存储，用 dragonboat 实�
 | incr, txn.incr            | [key]             | Key 自增 1 |
 | decr, txn.decr            | [key]             | Key 自减 1 |
 | query, txn.query          | [query]           | 执行查询语句 |
+| explain, txn.explain      | [query]           | 显示查询计划 |
 | txn.commit, commit |					| 提交事务 |
 | txn.savepoint, savepoint | [savepoint] | 创建 savepoint，用于回滚到指定 savepoint |
 | txn.rollback, rollback |	[savepoint]	| 回滚事务，或回滚到指定的 Savepoint |
