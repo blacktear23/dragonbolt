@@ -263,6 +263,12 @@ func (p *Parser) Parse() (*WhereStmt, error) {
 	if p.next() != nil {
 		return nil, errors.New("Syntax error missing operator")
 	}
+
+	// Check syntax
+	err = expr.Check()
+	if err != nil {
+		return nil, err
+	}
 	return &WhereStmt{
 		Expr: expr,
 	}, nil

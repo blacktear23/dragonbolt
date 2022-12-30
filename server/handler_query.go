@@ -26,6 +26,12 @@ func (c *rclient) handleQuery(args []protocol.Encodable) protocol.Encodable {
 		}
 		return protocol.NewSimpleErrorf("Internal error: %v", err)
 	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
+	}
 	return ret
 }
 

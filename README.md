@@ -21,15 +21,7 @@ dragonbolt 使用 boltdb 作为基础的 Key-Value 存储，用 dragonboat 实�
 | ---- | ---- | ---- |
 | command | 				| 只返回 OK |
 | ping 	| 				| 返回 PONG |
-| config 	| 				| 只返回 OK |
-| get 	| [key] 			| 获取 Key 的 Value |
-| set 	| [key] [value] 	| 设置 Key 的 Value |
-| mget	| [key] ...			| 批量获取 Key 的 Value |
-| mset	| [key1] [value1] ... | 批量设置 Key 的 Value |
-| del		| [key]			| 删除 Key |
-| incr	| [key]			| Key 自增 1 |
-| decr	| [key]			| Key 自减 1 |
-| scan	| [start] [end] limit [limit]	| 扫描从 start 开始，到 end 结尾的 Key，并列出 limit 个 Key. <br/> 其中 end 和 limit [limit] 为可选参数 |
+| config 	| 				| 只返回 OK |`
 
 ### 数据库命令
 
@@ -52,16 +44,20 @@ dragonbolt 使用 boltdb 作为基础的 Key-Value 存储，用 dragonboat 实�
 | 命令  | 参数  | 说明  |
 | ---- | ---- | ---- |
 | txn.begin, begin		| [isolation]			| 开始一个事务，隔离级别为 isolation. <br/>其中 isolation的值可以为 `rc` 或者 `rr`, 默认为 `rr` |
-| txn.set, tset 		| [key] [value] 		| 设置 Key 的 Value |
-| txn.mset, tmset		| [key1] [value1] ...	| 批量设置 Key 的 Value |
-| txn.get, tget		| [key]				| 获取 Key 的 Value |
-| txn.mget, tmget		| [key1] [key2] ...		| 批量获取 Key 的 Value |
-| txn.scan, tscan		| [start] [end] limit [limit]	| 扫描从 start 开始，到 end 结尾的 Key，并列出 limit 个 Key. <br/> 其中 end 和 limit [limit] 为可选参数 |
+| set, txn.set, tset 		| [key] [value] 		| 设置 Key 的 Value |
+| mset, txn.mset, tmset		| [key1] [value1] ...	| 批量设置 Key 的 Value |
+| get, txn.get, tget		| [key]				| 获取 Key 的 Value |
+| mget, txn.mget, tmget		| [key1] [key2] ...		| 批量获取 Key 的 Value |
+| scan, txn.scan, tscan		| [start] [end] limit [limit]	| 扫描从 start 开始，到 end 结尾的 Key，并列出 limit 个 Key. <br/> 其中 end 和 limit [limit] 为可选参数 |
+| incr, txn.incr            | [key]             | Key 自增 1 |
+| decr, txn.decr            | [key]             | Key 自减 1 |
+| query, txn.query          | [query]           | 执行查询语句 |
 | txn.commit, commit |					| 提交事务 |
 | txn.savepoint, savepoint | [savepoint] | 创建 savepoint，用于回滚到指定 savepoint |
 | txn.rollback, rollback |	[savepoint]	| 回滚事务，或回滚到指定的 Savepoint |
 | txn.lock, tlock		| [key]				| 锁定 Key |
 | txn.unlock, tunlock	| [key]				| 解锁 Key |
+
 
 # 关于 DB
 
@@ -91,3 +87,55 @@ RR 和 RC 隔离级别的差异只在于事务开始时，读快照的版本号�
 事务系统会通过锁和提交版本号做冲突验证。如果事务 A 锁定了某个 key，那么事务 B 在没有获取锁的前提下提交了对 Key 的修改会报告提交失败。任何一个事务在提交或者回滚之后都会自动解锁已锁定的 key。
 
 另外，如果事务在提交时修改的 Key 在库中的最新提交版本号是在事务开始之后，说明两个事务同时修改了一个 key，系统会对后提交的事务报告提交失败，并回滚该事务做的修改。
+
+# 查询 `query`
+
+Dragonbolt 支持通过类似 SQL 的表达式过滤 Key Value 数据。语法：
+
+```
+query "where [WhereCondition]"
+
+WhereCondition := Expr [LogicOp Expr]
+
+String := '"' Chars '"'
+
+LogicOp := "|" | "&"
+
+NotOp := "!"
+
+Field := "key" | "value"
+
+CompareOp := "=" | "!=" | "^=" | "~="
+
+FuncName := Chars
+
+FunctionCall := FuncName "(" Expr {"," Expr} ")"
+
+CompareParam := (Field | String | FunctionCall)
+
+Expr := [NotOp] CompareParam CompareOp CompareParam |
+        "(" [NotOp] CompareParam CompareOp CompareParam ")"
+
+```
+
+运算符：
+
+* `|`: 逻辑或 
+* `&`: 逻辑与
+* `=`: 相等
+* `!=`: 不等于
+* `^=`: 前缀匹配
+* `~=`: 正则表达式匹配
+
+字段：
+
+* `key`: 表示 Key
+* `value`: 表示 Value
+
+例子：
+
+```
+> query "where key = 'key1'"
+> query "where key = 'key1' & value = 'value1'"
+> query "where (key = 'key1' | key = 'key2') & value ^= 'value_prefix'"
+```

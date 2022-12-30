@@ -24,12 +24,12 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 	// 	return c.handleMget(args)
 	// case "mset":
 	// 	return c.handleMset(args)
-	case "inc", "incr":
-		return c.handleIncDec(args, 1)
-	case "dec", "decr":
-		return c.handleIncDec(args, -1)
 	// case "scan":
 	// 	return c.handleScan(args)
+	// case "inc", "incr":
+	// 	return c.handleIncDec(args, 1)
+	// case "dec", "decr":
+	// 	return c.handleIncDec(args, -1)
 	case "cf.set":
 		return c.handleCfSet(args)
 	case "cf.get":
@@ -54,10 +54,16 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleTxnDelete(args)
 	case "scan", "tscan", "txn.scan":
 		return c.handleTxnScan(args)
+	case "inc", "incr", "txn.inc", "txn.incr":
+		return c.handleTxnIncDec(args, 1)
+	case "dec", "decr", "txn.dec", "txn.decr":
+		return c.handleTxnIncDec(args, -1)
 	case "tlock", "txn.lock":
 		return c.handleTxnLock(args)
 	case "tunlock", "txn.unlock":
 		return c.handleTxnUnlock(args)
+	case "query", "txn.query":
+		return c.handleQuery(args)
 	case "savepoint", "txn.savepoint":
 		return c.handleSavepoint(args)
 	case "commit", "txn.commit":
@@ -74,8 +80,6 @@ func (c *rclient) handleCommand(cmd string, args []protocol.Encodable) protocol.
 		return c.handleCurrentDB(args)
 	case "db.del", "db.delete":
 		return c.handleDeleteDB(args)
-	case "query":
-		return c.handleQuery(args)
 	default:
 		return protocol.NewSimpleErrorf("Unsupport command: %s", cmd)
 	}

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/blacktear23/dragonbolt/kv"
@@ -341,4 +343,55 @@ func (c *rclient) handleTxnUnlock(args []protocol.Encodable) protocol.Encodable 
 		return protocol.NewSimpleError(err.Error())
 	}
 	return protocol.NewSimpleString("OK")
+}
+
+func (c *rclient) handleTxnIncDec(args []protocol.Encodable, delta int64) protocol.Encodable {
+	if len(args) < 1 {
+		return protocol.NewSimpleError("Need more arguments")
+	}
+	key, err := c.parseKey(args[0])
+	if err != nil {
+		return protocol.NewSimpleError(err.Error())
+	}
+	autoCommit, err := c.autoBegin()
+	if err != nil {
+		return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+	}
+	newVal, err := c.processTxnInc(key, delta)
+	if err != nil {
+		if autoCommit {
+			c.autoRollback()
+		}
+		return protocol.NewSimpleErrorf("Internal Error: %v", err)
+	}
+	if autoCommit {
+		err = c.autoCommit()
+		if err != nil {
+			return protocol.NewSimpleErrorf("Transaction Error: %v", err)
+		}
+	}
+	return protocol.NewNumber(newVal)
+}
+
+func (c *rclient) processTxnInc(key []byte, delta int64) (int64, error) {
+	value, err := c.txn.Get(key)
+	if err != nil {
+		return 0, err
+	}
+	var (
+		originNumber int64 = 0
+	)
+	if value != nil {
+		originNumber, err = strconv.ParseInt(string(value), 10, 64)
+		if err != nil {
+			return 0, errors.New("Value not a number")
+		}
+	}
+	newVal := originNumber + delta
+	newValue := []byte(strconv.FormatInt(newVal, 10))
+	err = c.txn.Set(key, newValue)
+	if err != nil {
+		return 0, err
+	}
+	return newVal, nil
 }
