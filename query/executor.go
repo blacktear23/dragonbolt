@@ -91,6 +91,22 @@ func (e *BinaryOpExpr) Execute(kv KVPair) (any, error) {
 		return e.execAnd(kv)
 	case Or:
 		return e.execOr(kv)
+	case Add:
+		return e.execMath(kv, '+')
+	case Sub:
+		return e.execMath(kv, '-')
+	case Mul:
+		return e.execMath(kv, '*')
+	case Div:
+		return e.execMath(kv, '/')
+	case Gt:
+		return e.execNumberCompare(kv, ">")
+	case Gte:
+		return e.execNumberCompare(kv, ">=")
+	case Lt:
+		return e.execNumberCompare(kv, "<")
+	case Lte:
+		return e.execNumberCompare(kv, "<=")
 	}
 	return nil, errors.New("Unknown operator")
 }
@@ -107,9 +123,18 @@ func (e *BinaryOpExpr) execEqual(kv KVPair) (bool, error) {
 	left, lok := convertToByteArray(rleft)
 	right, rok := convertToByteArray(rright)
 	if !lok || !rok {
-		return false, errors.New("= left value error")
+		return e.execIntEquals(rleft, rright)
 	}
 	return bytes.Equal(left, right), nil
+}
+
+func (e *BinaryOpExpr) execIntEquals(left any, right any) (bool, error) {
+	lint, liok := convertToInt(left)
+	rint, riok := convertToInt(right)
+	if liok && riok {
+		return lint == rint, nil
+	}
+	return false, errors.New("Invalid = operator left type")
 }
 
 func (e *BinaryOpExpr) execNotEqual(kv KVPair) (bool, error) {
@@ -192,6 +217,30 @@ func (e *BinaryOpExpr) execOr(kv KVPair) (bool, error) {
 	return left || right, nil
 }
 
+func (e *BinaryOpExpr) execMath(kv KVPair, op byte) (any, error) {
+	left, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	right, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	return executeMathOp(left, right, op)
+}
+
+func (e *BinaryOpExpr) execNumberCompare(kv KVPair, op string) (any, error) {
+	left, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	right, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	return execNumberCompare(left, right, op)
+}
+
 func (e *NotExpr) Execute(kv KVPair) (any, error) {
 	rright, err := e.Right.Execute(kv)
 	if err != nil {
@@ -232,4 +281,12 @@ func (e *FunctionCallExpr) executeFunc(kv KVPair, funcObj *Function) (any, error
 
 func (e *NameExpr) Execute(kv KVPair) (any, error) {
 	return e.Data, nil
+}
+
+func (e *NumberExpr) Execute(kv KVPair) (any, error) {
+	return e.Int, nil
+}
+
+func (e *FloatExpr) Execute(kv KVPair) (any, error) {
+	return e.Float, nil
 }

@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -18,6 +19,8 @@ const (
 	RBRACE   TokenType = 8
 	NAME     TokenType = 9
 	SEP      TokenType = 10
+	NUMBER   TokenType = 11
+	FLOAT    TokenType = 12
 )
 
 var (
@@ -26,12 +29,14 @@ var (
 		WHERE:    "where",
 		KEY:      "key",
 		VALUE:    "value",
-		OPERATOR: "op",
-		STRING:   "str",
+		OPERATOR: "OP",
+		STRING:   "STR",
 		LBRACE:   "(",
 		RBRACE:   ")",
-		NAME:     "name",
+		NAME:     "NAME",
 		SEP:      "SEP",
+		NUMBER:   "NUM",
+		FLOAT:    "FLOAT",
 	}
 )
 
@@ -60,7 +65,7 @@ func (t *Token) Precedence() int {
 			return 1
 		case "&":
 			return 2
-		case "=", "!=", "^=", "~=":
+		case "=", "!=", "^=", "~=", ">", ">=", "<", "<=":
 			return 3
 		case "+", "-":
 			return 4
@@ -124,7 +129,7 @@ func (l *Lexer) Split() []*Token {
 				ret = append(ret, token)
 				curr = ""
 			}
-		case '~', '^', '=', '!', '*':
+		case '~', '^', '=', '!', '*', '+', '-', '/', '>', '<':
 			if strStart {
 				curr += string(char)
 				break
@@ -135,23 +140,23 @@ func (l *Lexer) Split() []*Token {
 			curr = ""
 			var token *Token = nil
 
-			if char == '!' && next != '=' {
-				token = &Token{
-					Tp:   OPERATOR,
-					Data: "!",
-					Pos:  i,
+			if next != '=' {
+				switch char {
+				case '!', '*', '+', '-', '/':
+					token = &Token{
+						Tp:   OPERATOR,
+						Data: string(char),
+						Pos:  i,
+					}
+				case '>', '<':
+					token = &Token{
+						Tp:   OPERATOR,
+						Data: string(char),
+						Pos:  i,
+					}
 				}
-				ret = append(ret, token)
-				tokStartPos = i + 1
-				break
 			}
-
-			if char == '*' && next != '=' {
-				token = &Token{
-					Tp:   OPERATOR,
-					Data: "*",
-					Pos:  i,
-				}
+			if token != nil {
 				ret = append(ret, token)
 				tokStartPos = i + 1
 				break
@@ -175,6 +180,18 @@ func (l *Lexer) Split() []*Token {
 					token = &Token{
 						Tp:   OPERATOR,
 						Data: "!=",
+						Pos:  i - 1,
+					}
+				case '<':
+					token = &Token{
+						Tp:   OPERATOR,
+						Data: "<=",
+						Pos:  i - 1,
+					}
+				case '>':
+					token = &Token{
+						Tp:   OPERATOR,
+						Data: ">=",
 						Pos:  i - 1,
 					}
 				default:
@@ -250,6 +267,20 @@ func (l *Lexer) Split() []*Token {
 	return ret
 }
 
+func isNumber(val string) bool {
+	if _, err := strconv.ParseInt(val, 10, 64); err == nil {
+		return true
+	}
+	return false
+}
+
+func isFloat(val string) bool {
+	if _, err := strconv.ParseFloat(val, 64); err == nil {
+		return true
+	}
+	return false
+}
+
 func buildToken(curr string, pos int) *Token {
 	curr = strings.ToLower(strings.TrimSpace(curr))
 	if len(curr) == 0 {
@@ -273,6 +304,13 @@ func buildToken(curr string, pos int) *Token {
 		token.Tp = VALUE
 		return token
 	default:
+		if isNumber(curr) {
+			token.Tp = NUMBER
+			return token
+		} else if isFloat(curr) {
+			token.Tp = FLOAT
+			return token
+		}
 		token.Tp = NAME
 		return token
 	}

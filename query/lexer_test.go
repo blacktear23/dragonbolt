@@ -67,3 +67,39 @@ func TestLexer7(t *testing.T) {
 		fmt.Printf("%s\n", t.String())
 	}
 }
+
+func TestLexer8(t *testing.T) {
+	query := "select * where int(key) + 10"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}
+
+func TestLexer9(t *testing.T) {
+	query := "select * where int(key) + 10.5"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}
+
+func TestLexer10(t *testing.T) {
+	query := "select * where int(key) + 10.5.7"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}
+
+func TestLexer11(t *testing.T) {
+	query := "select * where int(key) + 10 > 5 & int(value) - 10 < 8"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}

@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -28,6 +29,14 @@ const (
 	NotEq       Operator = 5
 	PrefixMatch Operator = 6
 	RegExpMatch Operator = 7
+	Add         Operator = 8
+	Sub         Operator = 9
+	Mul         Operator = 10
+	Div         Operator = 11
+	Gt          Operator = 12
+	Gte         Operator = 13
+	Lt          Operator = 14
+	Lte         Operator = 15
 )
 
 var (
@@ -44,6 +53,14 @@ var (
 		Not:         "!",
 		PrefixMatch: "^=",
 		RegExpMatch: "~=",
+		Add:         "+",
+		Sub:         "-",
+		Mul:         "*",
+		Div:         "/",
+		Gt:          ">",
+		Gte:         ">=",
+		Lt:          "<",
+		Lte:         "<=",
 	}
 
 	StringToOperator = map[string]Operator{
@@ -54,6 +71,14 @@ var (
 		"^=": PrefixMatch,
 		"~=": RegExpMatch,
 		"!=": NotEq,
+		"+":  Add,
+		"-":  Sub,
+		"*":  Mul,
+		"/":  Div,
+		">":  Gt,
+		">=": Gte,
+		"<":  Lt,
+		"<=": Lte,
 	}
 )
 
@@ -91,6 +116,8 @@ var (
 	_ Expression = (*NotExpr)(nil)
 	_ Expression = (*FunctionCallExpr)(nil)
 	_ Expression = (*NameExpr)(nil)
+	_ Expression = (*NumberExpr)(nil)
+	_ Expression = (*FloatExpr)(nil)
 )
 
 type Expression interface {
@@ -162,5 +189,45 @@ type NameExpr struct {
 }
 
 func (e *NameExpr) String() string {
+	return fmt.Sprintf("%s", e.Data)
+}
+
+type NumberExpr struct {
+	Data string
+	Int  int64
+}
+
+func newNumberExpr(data string) *NumberExpr {
+	num, err := strconv.ParseInt(data, 10, 64)
+	if err != nil {
+		num = 0
+	}
+	return &NumberExpr{
+		Data: data,
+		Int:  num,
+	}
+}
+
+func (e *NumberExpr) String() string {
+	return fmt.Sprintf("%s", e.Data)
+}
+
+type FloatExpr struct {
+	Data  string
+	Float float64
+}
+
+func newFloatExpr(data string) *FloatExpr {
+	num, err := strconv.ParseFloat(data, 64)
+	if err != nil {
+		num = 0.0
+	}
+	return &FloatExpr{
+		Data:  data,
+		Float: num,
+	}
+}
+
+func (e *FloatExpr) String() string {
 	return fmt.Sprintf("%s", e.Data)
 }

@@ -147,3 +147,25 @@ func TestParser14(t *testing.T) {
 	fmt.Printf("%+v\n", expr.Where.Expr.String())
 	fmt.Printf("%+v\n", expr)
 }
+
+func TestParser15(t *testing.T) {
+	query := "select key, int(value) where str(int(key) + 1) = '1'"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
+	fmt.Printf("%+v\n", expr)
+}
+
+func TestParser16(t *testing.T) {
+	query := "select key, int(value) where int(key) + 1 >= 1 & (int(value) - 1 > 10 | int(value) <= 20)"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
+	fmt.Printf("%+v\n", expr)
+}

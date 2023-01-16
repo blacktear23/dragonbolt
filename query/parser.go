@@ -244,6 +244,14 @@ func (p *Parser) parseOperand() (Expression, error) {
 		x := &NameExpr{Data: p.tok.Data}
 		p.next()
 		return x, nil
+	case NUMBER:
+		x := newNumberExpr(p.tok.Data)
+		p.next()
+		return x, nil
+	case FLOAT:
+		x := newFloatExpr(p.tok.Data)
+		p.next()
+		return x, nil
 	}
 	return nil, errors.New("Bad Expression")
 }

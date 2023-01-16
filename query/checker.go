@@ -107,3 +107,11 @@ func (e *FunctionCallExpr) Check() error {
 func (e *NameExpr) Check() error {
 	return nil
 }
+
+func (e *FloatExpr) Check() error {
+	return nil
+}
+
+func (e *NumberExpr) Check() error {
+	return nil
+}
