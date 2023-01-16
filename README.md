@@ -98,7 +98,7 @@ query "[select (* | Fields)] where [WhereCondition]"
 
 Fields := (Field | FunctionCall | String) {, (Field | FunctionCall | String) }
 
-WhereCondition := Expr [LogicOp Expr]
+WhereCondition := Expr {LogicOp Expr}
 
 String := '"' Chars '"'
 
@@ -108,16 +108,19 @@ NotOp := "!"
 
 Field := "key" | "value"
 
-CompareOp := "=" | "!=" | "^=" | "~="
+BinaryOp := "=" | "!=" | "^=" | "~=" | ">" | ">=" | "<" | "<=" |
+            "+" | "-" | "*" | "/"
 
 FuncName := Chars
 
-FunctionCall := FuncName "(" (Field | Expr) {"," (Field | Expr)} ")"
+FuncArg := (Field | Number | String | Expr)
 
-CompareParam := (Field | String | FunctionCall)
+FunctionCall := FuncName "(" FuncArg { "," FuncArg } ")"
 
-Expr := [NotOp] CompareParam CompareOp CompareParam |
-        "(" [NotOp] CompareParam CompareOp CompareParam ")"
+OpParam := (Field | String | FunctionCall | Number)
+
+Expr := [NotOp] OpParam BinaryOp OpParam |
+        "(" [NotOp] OpParam BinaryOp OpParam ")"
 
 ```
 
@@ -129,6 +132,14 @@ Expr := [NotOp] CompareParam CompareOp CompareParam |
 * `!=`: 不等于
 * `^=`: 前缀匹配
 * `~=`: 正则表达式匹配
+*  `>`: 大于
+*  `<`: 小于
+*  `>=`: 大于等于
+*  `<=`: 小于等于
+*  `+`: 加法
+*  `-`: 减法
+*  `*`: 乘法
+*  `/`: 除法
 
 字段：
 
@@ -149,6 +160,8 @@ Expr := [NotOp] CompareParam CompareOp CompareParam |
 > query "where key = 'key1'"
 > query "where key = 'key1' & value = 'value1'"
 > query "where (key = 'key1' | key = 'key2') & value ^= 'value_prefix'"
-> query "select key where key = 'key1'"
+> query "select * where key = 'key1'"
+> query "select key where key = 'key2'"
 > query "select key, value, upper(value) where key ^= 'key'"
+> query "select key, int(value) * 2 where key ^= 'prefix' & int(value) * 2 < 10"
 ```
