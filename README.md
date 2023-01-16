@@ -94,7 +94,9 @@ RR 和 RC 隔离级别的差异只在于事务开始时，读快照的版本号�
 Dragonbolt 支持通过类似 SQL 的表达式过滤 Key Value 数据。语法：
 
 ```
-query "where [WhereCondition]"
+query "[select (* | Fields)] where [WhereCondition]"
+
+Fields := (Field | FunctionCall | String) {, (Field | FunctionCall | String) }
 
 WhereCondition := Expr [LogicOp Expr]
 
@@ -110,7 +112,7 @@ CompareOp := "=" | "!=" | "^=" | "~="
 
 FuncName := Chars
 
-FunctionCall := FuncName "(" Expr {"," Expr} ")"
+FunctionCall := FuncName "(" (Field | Expr) {"," (Field | Expr)} ")"
 
 CompareParam := (Field | String | FunctionCall)
 
@@ -133,10 +135,20 @@ Expr := [NotOp] CompareParam CompareOp CompareParam |
 * `key`: 表示 Key
 * `value`: 表示 Value
 
+函数：
+
+* `int(val)`: 转换为数字
+* `float(val)`: 转换为浮点数
+* `str(val)`: 转换为字符串
+* `upper(val)`: 转换成大写字母
+* `lower(val)`: 转换成小写字母
+
 例子：
 
 ```
 > query "where key = 'key1'"
 > query "where key = 'key1' & value = 'value1'"
 > query "where (key = 'key1' | key = 'key2') & value ^= 'value_prefix'"
+> query "select key where key = 'key1'"
+> query "select key, value, upper(value) where key ^= 'key'"
 ```
