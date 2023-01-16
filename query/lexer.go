@@ -15,8 +15,8 @@ const (
 	VALUE    TokenType = 4
 	OPERATOR TokenType = 5
 	STRING   TokenType = 6
-	LBRACE   TokenType = 7
-	RBRACE   TokenType = 8
+	LPAREN   TokenType = 7
+	RPAREN   TokenType = 8
 	NAME     TokenType = 9
 	SEP      TokenType = 10
 	NUMBER   TokenType = 11
@@ -31,8 +31,8 @@ var (
 		VALUE:    "value",
 		OPERATOR: "OP",
 		STRING:   "STR",
-		LBRACE:   "(",
-		RBRACE:   ")",
+		LPAREN:   "(",
+		RPAREN:   ")",
 		NAME:     "NAME",
 		SEP:      "SEP",
 		NUMBER:   "NUM",
@@ -217,13 +217,13 @@ func (l *Lexer) Split() []*Token {
 			}
 			if char == '(' {
 				token = &Token{
-					Tp:   LBRACE,
+					Tp:   LPAREN,
 					Data: string(char),
 					Pos:  i,
 				}
 			} else if char == ')' {
 				token = &Token{
-					Tp:   RBRACE,
+					Tp:   RPAREN,
 					Data: string(char),
 					Pos:  i,
 				}

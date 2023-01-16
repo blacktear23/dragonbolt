@@ -157,25 +157,25 @@ func (p *Parser) parseUnaryExpr() (Expression, error) {
 }
 
 func (p *Parser) parseFuncCall(fun Expression) (Expression, error) {
-	err := p.expect(&Token{Tp: LBRACE, Data: "("})
+	err := p.expect(&Token{Tp: LPAREN, Data: "("})
 	if err != nil {
 		return nil, err
 	}
 	p.exprLev++
 	var list []Expression
-	for p.tok != nil && p.tok.Tp != RBRACE {
+	for p.tok != nil && p.tok.Tp != RPAREN {
 		arg, err := p.parseExpr()
 		if err != nil {
 			return nil, err
 		}
 		list = append(list, arg)
-		if p.tok != nil && p.tok.Tp == RBRACE {
+		if p.tok != nil && p.tok.Tp == RPAREN {
 			break
 		}
 		p.next()
 	}
 	p.exprLev--
-	err = p.expect(&Token{Tp: RBRACE, Data: ")"})
+	err = p.expect(&Token{Tp: RPAREN, Data: ")"})
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (p *Parser) parsePrimaryExpr(x Expression) (Expression, error) {
 			return x, nil
 		}
 		switch p.tok.Tp {
-		case LBRACE:
+		case LPAREN:
 			x, err = p.parseFuncCall(x)
 			if err != nil {
 				return nil, err
@@ -227,7 +227,7 @@ func (p *Parser) parseOperand() (Expression, error) {
 		x := &StringExpr{Data: p.tok.Data}
 		p.next()
 		return x, nil
-	case LBRACE:
+	case LPAREN:
 		p.next()
 		p.exprLev++
 		x, err := p.parseExpr()
@@ -235,7 +235,7 @@ func (p *Parser) parseOperand() (Expression, error) {
 			return nil, err
 		}
 		p.exprLev--
-		err = p.expect(&Token{Tp: RBRACE, Data: ")"})
+		err = p.expect(&Token{Tp: RPAREN, Data: ")"})
 		if err != nil {
 			return nil, err
 		}
