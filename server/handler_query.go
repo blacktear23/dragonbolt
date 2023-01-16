@@ -43,14 +43,18 @@ func (c *rclient) processQuery(queryStr string) (protocol.Encodable, error) {
 	}
 	ret := protocol.Array{}
 	for {
-		key, val, err := plan.Next()
+		cols, err := plan.Next()
 		if err != nil {
 			return nil, err
 		}
-		if key == nil {
+		if cols == nil {
 			break
 		}
-		ret = append(ret, protocol.Array{protocol.NewBlobString(key), protocol.NewBlobString(val)})
+		fields := make([]protocol.Encodable, len(cols))
+		for i := 0; i < len(cols); i++ {
+			fields[i] = protocol.NewBlobString(cols[i])
+		}
+		ret = append(ret, protocol.Array(fields))
 	}
 	return ret, nil
 }

@@ -6,7 +6,9 @@ import (
 )
 
 var (
-	ErrSyntaxStartWhere = errors.New("Syntax Error: not start with `where`")
+	ErrSyntaxStartWhere    = errors.New("Syntax Error: not start with `where`")
+	ErrSyntaxEmptyFields   = errors.New("Syntax Error: empty select fields")
+	ErrSyntaxInvalidFields = errors.New("Syntax Error: invalid fields")
 )
 
 const MaxNestLevel = 1e5
@@ -246,15 +248,78 @@ func (p *Parser) parseOperand() (Expression, error) {
 	return nil, errors.New("Bad Expression")
 }
 
-func (p *Parser) Parse() (*WhereStmt, error) {
+func (p *Parser) parseSelect() (*SelectStmt, error) {
+	var (
+		fields    = []Expression{}
+		allFields = false
+		err       error
+	)
+	err = p.expect(&Token{Tp: SELECT, Data: "select"})
+	if err != nil {
+		return nil, err
+	}
+	p.exprLev++
+	for p.tok != nil && p.tok.Tp != WHERE {
+		if p.tok.Tp == OPERATOR && p.tok.Data == "*" {
+			allFields = true
+			p.next()
+			if p.tok != nil && p.tok.Tp != WHERE {
+				return nil, ErrSyntaxInvalidFields
+			}
+			if len(fields) > 0 {
+				return nil, ErrSyntaxInvalidFields
+			}
+			break
+		}
+		field, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, field)
+		if p.tok != nil && p.tok.Tp == WHERE {
+			break
+		}
+		p.next()
+	}
+	p.exprLev--
+	err = p.expect(&Token{Tp: WHERE, Data: "where"})
+	if err != nil {
+		return nil, err
+	}
+	if len(fields) == 0 && !allFields {
+		return nil, ErrSyntaxEmptyFields
+	}
+
+	return &SelectStmt{
+		Fields:    fields,
+		AllFields: allFields,
+	}, nil
+}
+
+func (p *Parser) Parse() (*SelectStmt, error) {
 	if p.numToks == 0 {
 		return nil, ErrSyntaxStartWhere
 	}
 	p.next()
-	if p.tok == nil || p.tok.Tp != WHERE {
+	if p.tok == nil || (p.tok.Tp != WHERE && p.tok.Tp != SELECT) {
 		return nil, ErrSyntaxStartWhere
 	}
-	p.next()
+	var (
+		selectStmt *SelectStmt = nil
+		err        error
+	)
+
+	if p.tok.Tp == SELECT {
+		selectStmt, err = p.parseSelect()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if p.tok.Tp != WHERE {
+			return nil, ErrSyntaxStartWhere
+		}
+		p.next()
+	}
 
 	expr, err := p.parseExpr()
 	if err != nil {
@@ -269,7 +334,15 @@ func (p *Parser) Parse() (*WhereStmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &WhereStmt{
+	whereStmt := &WhereStmt{
 		Expr: expr,
-	}, nil
+	}
+	if selectStmt == nil {
+		selectStmt = &SelectStmt{
+			Fields:    nil,
+			AllFields: true,
+		}
+	}
+	selectStmt.Where = whereStmt
+	return selectStmt, nil
 }

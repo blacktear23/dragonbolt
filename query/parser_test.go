@@ -12,7 +12,7 @@ func TestParser1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser2(t *testing.T) {
@@ -22,7 +22,7 @@ func TestParser2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser3(t *testing.T) {
@@ -30,7 +30,7 @@ func TestParser3(t *testing.T) {
 	p := NewParser(query)
 	expr, err := p.Parse()
 	if err == nil {
-		fmt.Printf("%+v\n", expr.Expr.String())
+		fmt.Printf("%+v\n", expr.Where.Expr.String())
 		t.Fatal("Should get syntax error")
 	}
 	fmt.Printf("%+v\n", err)
@@ -43,7 +43,7 @@ func TestParser4(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser5(t *testing.T) {
@@ -53,7 +53,7 @@ func TestParser5(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser6(t *testing.T) {
@@ -63,7 +63,7 @@ func TestParser6(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser7(t *testing.T) {
@@ -73,7 +73,7 @@ func TestParser7(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser8(t *testing.T) {
@@ -83,7 +83,7 @@ func TestParser8(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser9(t *testing.T) {
@@ -94,7 +94,7 @@ func TestParser9(t *testing.T) {
 		fmt.Println(err)
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser10(t *testing.T) {
@@ -104,7 +104,7 @@ func TestParser10(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser11(t *testing.T) {
@@ -114,7 +114,7 @@ func TestParser11(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser12(t *testing.T) {
@@ -124,7 +124,7 @@ func TestParser12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
 }
 
 func TestParser13(t *testing.T) {
@@ -134,5 +134,16 @@ func TestParser13(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("%+v\n", expr.Expr.String())
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
+}
+
+func TestParser14(t *testing.T) {
+	query := "select * where key = '1'"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
+	fmt.Printf("%+v\n", expr)
 }

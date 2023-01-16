@@ -5,8 +5,10 @@ import (
 )
 
 type Optimizer struct {
-	Query  string
-	filter *FilterExec
+	Query     string
+	filter    *FilterExec
+	allFields bool
+	fields    []Expression
 }
 
 func NewOptimizer(query string) *Optimizer {
@@ -15,20 +17,31 @@ func NewOptimizer(query string) *Optimizer {
 	}
 }
 
-func (o *Optimizer) BuildPlan(t txn.Txn) (Plan, error) {
+func (o *Optimizer) BuildPlan(t txn.Txn) (*ProjectionPlan, error) {
 	err := o.buildFilter()
 	if err != nil {
 		return nil, err
 	}
-	return o.buildPlan(t)
+	fp, err := o.buildPlan(t)
+	if err != nil {
+		return nil, err
+	}
+	return &ProjectionPlan{
+		Txn:       t,
+		ChildPlan: fp,
+		AllFields: o.allFields,
+		Fields:    o.fields,
+	}, nil
 }
 
 func (o *Optimizer) buildFilter() error {
-	filter, err := BuildExecutor(o.Query)
+	selectStmt, filter, err := BuildExecutor(o.Query)
 	if err != nil {
 		return err
 	}
 	o.filter = filter
+	o.allFields = selectStmt.AllFields
+	o.fields = selectStmt.Fields
 	return nil
 }
 

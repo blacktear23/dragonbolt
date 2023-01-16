@@ -3,7 +3,9 @@ package query
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -102,8 +104,8 @@ func (e *BinaryOpExpr) execEqual(kv KVPair) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	left, lok := rleft.([]byte)
-	right, rok := rright.([]byte)
+	left, lok := convertToByteArray(rleft)
+	right, rok := convertToByteArray(rright)
 	if !lok || !rok {
 		return false, errors.New("= left value error")
 	}
@@ -127,8 +129,8 @@ func (e *BinaryOpExpr) execPrefixMatch(kv KVPair) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	left, lok := rleft.([]byte)
-	right, rok := rright.([]byte)
+	left, lok := convertToByteArray(rleft)
+	right, rok := convertToByteArray(rright)
 	if !lok || !rok {
 		return false, errors.New("^= left value error")
 	}
@@ -144,8 +146,8 @@ func (e *BinaryOpExpr) execRegexpMatch(kv KVPair) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	left, lok := rleft.([]byte)
-	right, rok := rright.([]byte)
+	left, lok := convertToByteArray(rleft)
+	right, rok := convertToByteArray(rright)
 	if !lok || !rok {
 		return false, errors.New("~= left value error")
 	}
@@ -203,7 +205,29 @@ func (e *NotExpr) Execute(kv KVPair) (any, error) {
 }
 
 func (e *FunctionCallExpr) Execute(kv KVPair) (any, error) {
-	return nil, nil
+	efname, err := e.Name.Execute(kv)
+	if err != nil {
+		return nil, err
+	}
+	fname, ok := efname.(string)
+	if !ok {
+		return nil, errors.New("Invalid function name")
+	}
+	fnameKey := strings.ToLower(fname)
+	if funcObj, have := funcMap[fnameKey]; have {
+		return e.executeFunc(kv, funcObj)
+	}
+	return nil, fmt.Errorf("Cannot find function %s", fname)
+}
+
+func (e *FunctionCallExpr) executeFunc(kv KVPair, funcObj *Function) (any, error) {
+	// Check arguments
+	if !funcObj.VarArgs {
+		if len(e.Args) != funcObj.NumArgs {
+			return nil, fmt.Errorf("Function %s require %d arguments but got %d", funcObj.Name, funcObj.NumArgs, len(e.Args))
+		}
+	}
+	return funcObj.Body(kv, e.Args)
 }
 
 func (e *NameExpr) Execute(kv KVPair) (any, error) {

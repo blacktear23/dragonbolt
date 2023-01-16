@@ -7,7 +7,7 @@ import (
 
 func TestExec1(t *testing.T) {
 	query := "where key = 'test' & value = 'x'"
-	exec, err := BuildExecutor(query)
+	_, exec, err := BuildExecutor(query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestExec2(t *testing.T) {
 		NewKVPStr("test3", "z3"),
 		NewKVPStr("test4", "x1"),
 	}
-	exec, err := BuildExecutor(query)
+	_, exec, err := BuildExecutor(query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestExec3(t *testing.T) {
 		NewKVPStr("test3", "z3"),
 		NewKVPStr("test4", "x1"),
 	}
-	exec, err := BuildExecutor(query)
+	_, exec, err := BuildExecutor(query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestExec4(t *testing.T) {
 		NewKVPStr("test3", "z3"),
 		NewKVPStr("test4", "x1"),
 	}
-	exec, err := BuildExecutor(query)
+	_, exec, err := BuildExecutor(query)
 	if err != nil {
 		t.Fatal(err)
 	}

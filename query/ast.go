@@ -99,6 +99,12 @@ type Expression interface {
 	Execute(kv KVPair) (any, error)
 }
 
+type SelectStmt struct {
+	AllFields bool
+	Fields    []Expression
+	Where     *WhereStmt
+}
+
 type WhereStmt struct {
 	Expr Expression
 }

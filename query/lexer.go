@@ -8,19 +8,21 @@ import (
 type TokenType byte
 
 const (
-	WHERE    TokenType = 1
-	KEY      TokenType = 2
-	VALUE    TokenType = 3
-	OPERATOR TokenType = 4
-	STRING   TokenType = 5
-	LBRACE   TokenType = 6
-	RBRACE   TokenType = 7
-	NAME     TokenType = 8
-	SEP      TokenType = 9
+	SELECT   TokenType = 1
+	WHERE    TokenType = 2
+	KEY      TokenType = 3
+	VALUE    TokenType = 4
+	OPERATOR TokenType = 5
+	STRING   TokenType = 6
+	LBRACE   TokenType = 7
+	RBRACE   TokenType = 8
+	NAME     TokenType = 9
+	SEP      TokenType = 10
 )
 
 var (
 	TokenTypeToString = map[TokenType]string{
+		SELECT:   "select",
 		WHERE:    "where",
 		KEY:      "key",
 		VALUE:    "value",
@@ -122,7 +124,7 @@ func (l *Lexer) Split() []*Token {
 				ret = append(ret, token)
 				curr = ""
 			}
-		case '~', '^', '=', '!':
+		case '~', '^', '=', '!', '*':
 			if strStart {
 				curr += string(char)
 				break
@@ -132,6 +134,7 @@ func (l *Lexer) Split() []*Token {
 			}
 			curr = ""
 			var token *Token = nil
+
 			if char == '!' && next != '=' {
 				token = &Token{
 					Tp:   OPERATOR,
@@ -142,6 +145,18 @@ func (l *Lexer) Split() []*Token {
 				tokStartPos = i + 1
 				break
 			}
+
+			if char == '*' && next != '=' {
+				token = &Token{
+					Tp:   OPERATOR,
+					Data: "*",
+					Pos:  i,
+				}
+				ret = append(ret, token)
+				tokStartPos = i + 1
+				break
+			}
+
 			if char == '=' {
 				switch prev {
 				case '^':
@@ -245,6 +260,9 @@ func buildToken(curr string, pos int) *Token {
 		Pos:  pos,
 	}
 	switch curr {
+	case "select":
+		token.Tp = SELECT
+		return token
 	case "where":
 		token.Tp = WHERE
 		return token

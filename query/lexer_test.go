@@ -58,3 +58,12 @@ func TestLexer6(t *testing.T) {
 		fmt.Printf("%s\n", t.String())
 	}
 }
+
+func TestLexer7(t *testing.T) {
+	query := "select * where func_name(key, 'test')"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}
