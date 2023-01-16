@@ -145,7 +145,7 @@ func TestParser14(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Printf("%+v\n", expr.Where.Expr.String())
-	fmt.Printf("%+v\n", expr)
+	fmt.Printf("%+v\n", *expr)
 }
 
 func TestParser15(t *testing.T) {
@@ -156,7 +156,7 @@ func TestParser15(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Printf("%+v\n", expr.Where.Expr.String())
-	fmt.Printf("%+v\n", expr)
+	fmt.Printf("%+v\n", *expr)
 }
 
 func TestParser16(t *testing.T) {
@@ -167,5 +167,29 @@ func TestParser16(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Printf("%+v\n", expr.Where.Expr.String())
-	fmt.Printf("%+v\n", expr)
+	fmt.Printf("%+v\n", *expr)
+}
+
+func TestParser17(t *testing.T) {
+	query := "select key, int(value) where key ^= 'key' limit 10"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
+	fmt.Printf("%+v\n", *expr.Limit)
+	fmt.Printf("%+v\n", *expr)
+}
+
+func TestParser18(t *testing.T) {
+	query := "select key, int(value) where key ^= 'key' limit 20, 10"
+	p := NewParser(query)
+	expr, err := p.Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%+v\n", expr.Where.Expr.String())
+	fmt.Printf("%+v\n", *expr.Limit)
+	fmt.Printf("%+v\n", *expr)
 }

@@ -304,6 +304,47 @@ func (p *Parser) parseSelect() (*SelectStmt, error) {
 	}, nil
 }
 
+func (p *Parser) parseLimit() (*LimitStmt, error) {
+	var (
+		err         error
+		shouldBreak bool          = false
+		exprs       []*NumberExpr = make([]*NumberExpr, 0, 2)
+		ret         *LimitStmt    = &LimitStmt{}
+	)
+	err = p.expect(&Token{Tp: LIMIT, Data: "limit"})
+	if err != nil {
+		return nil, err
+	}
+	for p.tok != nil && !shouldBreak {
+		switch p.tok.Tp {
+		case NUMBER:
+			x := newNumberExpr(p.tok.Data)
+			p.next()
+			exprs = append(exprs, x)
+		case SEP:
+			p.next()
+			if p.tok == nil || p.tok.Tp != NUMBER {
+				return nil, errors.New("Invalid limit parameters after seperator")
+			}
+		default:
+			shouldBreak = true
+		}
+	}
+	if len(exprs) > 2 {
+		return nil, errors.New("Too many limit parameters")
+	}
+	switch len(exprs) {
+	case 0:
+		return nil, errors.New("Invalid limit parameters")
+	case 1:
+		ret.Count = int(exprs[0].Int)
+	case 2:
+		ret.Start = int(exprs[0].Int)
+		ret.Count = int(exprs[1].Int)
+	}
+	return ret, nil
+}
+
 func (p *Parser) Parse() (*SelectStmt, error) {
 	if p.numToks == 0 {
 		return nil, ErrSyntaxStartWhere
@@ -314,6 +355,7 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 	}
 	var (
 		selectStmt *SelectStmt = nil
+		limitStmt  *LimitStmt  = nil
 		err        error
 	)
 
@@ -333,8 +375,17 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p.next() != nil {
-		return nil, errors.New("Syntax error missing operator")
+
+	if p.tok != nil {
+		switch p.tok.Tp {
+		case LIMIT:
+			limitStmt, err = p.parseLimit()
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, errors.New("Syntax error missing operator")
+		}
 	}
 
 	// Check syntax
@@ -352,5 +403,6 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 		}
 	}
 	selectStmt.Where = whereStmt
+	selectStmt.Limit = limitStmt
 	return selectStmt, nil
 }

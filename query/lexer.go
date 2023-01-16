@@ -21,6 +21,7 @@ const (
 	SEP      TokenType = 10
 	NUMBER   TokenType = 11
 	FLOAT    TokenType = 12
+	LIMIT    TokenType = 13
 )
 
 var (
@@ -37,6 +38,7 @@ var (
 		SEP:      "SEP",
 		NUMBER:   "NUM",
 		FLOAT:    "FLOAT",
+		LIMIT:    "LIMIT",
 	}
 )
 
@@ -306,6 +308,9 @@ func buildToken(curr string, pos int) *Token {
 		return token
 	case "value":
 		token.Tp = VALUE
+		return token
+	case "limit":
+		token.Tp = LIMIT
 		return token
 	default:
 		if isNumber(curr) {

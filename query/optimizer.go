@@ -9,6 +9,7 @@ type Optimizer struct {
 	filter    *FilterExec
 	allFields bool
 	fields    []Expression
+	limitStmt *LimitStmt
 }
 
 func NewOptimizer(query string) *Optimizer {
@@ -26,12 +27,27 @@ func (o *Optimizer) BuildPlan(t txn.Txn) (*ProjectionPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if o.limitStmt != nil {
+		fp = o.buildLimitPlan(t, fp)
+	}
+
 	return &ProjectionPlan{
 		Txn:       t,
 		ChildPlan: fp,
 		AllFields: o.allFields,
 		Fields:    o.fields,
 	}, nil
+}
+
+func (o *Optimizer) buildLimitPlan(t txn.Txn, fp Plan) Plan {
+	return &LimitPlan{
+		Txn:       t,
+		Start:     o.limitStmt.Start,
+		Count:     o.limitStmt.Count,
+		current:   0,
+		ChildPlan: fp,
+	}
 }
 
 func (o *Optimizer) buildFilter() error {
@@ -42,6 +58,7 @@ func (o *Optimizer) buildFilter() error {
 	o.filter = filter
 	o.allFields = selectStmt.AllFields
 	o.fields = selectStmt.Fields
+	o.limitStmt = selectStmt.Limit
 	return nil
 }
 

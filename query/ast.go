@@ -130,10 +130,16 @@ type SelectStmt struct {
 	AllFields bool
 	Fields    []Expression
 	Where     *WhereStmt
+	Limit     *LimitStmt
 }
 
 type WhereStmt struct {
 	Expr Expression
+}
+
+type LimitStmt struct {
+	Start int
+	Count int
 }
 
 type BinaryOpExpr struct {
