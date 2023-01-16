@@ -103,3 +103,12 @@ func TestLexer11(t *testing.T) {
 		fmt.Printf("%s\n", t.String())
 	}
 }
+
+func TestLexer12(t *testing.T) {
+	query := "select * where key ^= 'asdf\"jkl'"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}

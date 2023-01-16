@@ -90,12 +90,13 @@ func NewLexer(query string) *Lexer {
 
 func (l *Lexer) Split() []*Token {
 	var (
-		curr        string
-		prev        byte
-		next        byte
-		ret         []*Token
-		strStart    bool = false
-		tokStartPos int
+		curr         string
+		prev         byte
+		next         byte
+		ret          []*Token
+		strStart     bool = false
+		strStartChar byte = 0
+		tokStartPos  int
 	)
 	for i := 0; i < l.Length; i++ {
 		char := l.Query[i]
@@ -118,8 +119,9 @@ func (l *Lexer) Split() []*Token {
 		case '"', '\'':
 			if !strStart {
 				strStart = true
+				strStartChar = char
 				tokStartPos = i
-			} else {
+			} else if strStartChar == char {
 				strStart = false
 				token := &Token{
 					Tp:   STRING,
@@ -128,6 +130,8 @@ func (l *Lexer) Split() []*Token {
 				}
 				ret = append(ret, token)
 				curr = ""
+			} else {
+				curr += string(char)
 			}
 		case '~', '^', '=', '!', '*', '+', '-', '/', '>', '<':
 			if strStart {
