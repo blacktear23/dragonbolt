@@ -95,6 +95,21 @@ func (c *rclient) processExplain(queryStr string) (protocol.Encodable, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret := plan.String()
-	return protocol.NewBlobString([]byte(ret)), nil
+
+	ret := protocol.Array{}
+	for i, plan := range plan.Explain() {
+		space := ""
+		for x := 0; x < i*3; x++ {
+			space += " "
+		}
+		var planStr string
+		if i == 0 {
+			planStr = space + plan
+		} else {
+			planStr = space + "`-" + plan
+		}
+		ret = append(ret, protocol.NewSimpleString(planStr))
+	}
+
+	return ret, nil
 }

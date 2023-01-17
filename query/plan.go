@@ -11,6 +11,7 @@ import (
 
 type Plan interface {
 	String() string
+	Explain() []string
 	Init() error
 	Next() (key []byte, value []byte, err error)
 }
@@ -38,6 +39,10 @@ func NewFullScanPlan(t txn.Txn, f *FilterExec) Plan {
 
 func (p *FullScanPlan) String() string {
 	return "FullScanPlan"
+}
+
+func (p *FullScanPlan) Explain() []string {
+	return []string{p.String()}
 }
 
 func (p *FullScanPlan) Init() (err error) {
@@ -88,6 +93,10 @@ func (p *EmptyResultPlan) Next() ([]byte, []byte, error) {
 
 func (p *EmptyResultPlan) String() string {
 	return "EmptyResultPlan"
+}
+
+func (p *EmptyResultPlan) Explain() []string {
+	return []string{p.String()}
 }
 
 type PrefixScanPlan struct {
@@ -141,6 +150,10 @@ func (p *PrefixScanPlan) String() string {
 	return fmt.Sprintf("PrefixScanPlan{Prefix = '%s'}", p.Prefix)
 }
 
+func (p *PrefixScanPlan) Explain() []string {
+	return []string{p.String()}
+}
+
 type MultiGetPlan struct {
 	Txn     txn.Txn
 	Filter  *FilterExec
@@ -191,7 +204,11 @@ func (p *MultiGetPlan) Next() ([]byte, []byte, error) {
 
 func (p *MultiGetPlan) String() string {
 	keys := strings.Join(p.Keys, ", ")
-	return fmt.Sprintf("MultiGetPlan{Keys = %s}", keys)
+	return fmt.Sprintf("MultiGetPlan{Keys = <%s>}", keys)
+}
+
+func (p *MultiGetPlan) Explain() []string {
+	return []string{p.String()}
 }
 
 type LimitPlan struct {
@@ -237,7 +254,15 @@ func (p *LimitPlan) Next() ([]byte, []byte, error) {
 }
 
 func (p *LimitPlan) String() string {
-	return fmt.Sprintf("LimitPlan{Start = %d, Count = %d} -> %s", p.Start, p.Count, p.ChildPlan.String())
+	return fmt.Sprintf("LimitPlan{Start = %d, Count = %d}", p.Start, p.Count)
+}
+
+func (p *LimitPlan) Explain() []string {
+	ret := []string{p.String()}
+	for _, plan := range p.ChildPlan.Explain() {
+		ret = append(ret, plan)
+	}
+	return ret
 }
 
 type ProjectionPlan struct {
@@ -307,7 +332,13 @@ func (p *ProjectionPlan) String() string {
 			fields = append(fields, f.String())
 		}
 	}
-	ret := fmt.Sprintf("ProjectionPlan{Fields = '%s'}", strings.Join(fields, ", "))
-	ret += fmt.Sprintf(" -> %s", p.ChildPlan.String())
+	return fmt.Sprintf("ProjectionPlan{Fields = <%s>}", strings.Join(fields, ", "))
+}
+
+func (p *ProjectionPlan) Explain() []string {
+	ret := []string{p.String()}
+	for _, plan := range p.ChildPlan.Explain() {
+		ret = append(ret, plan)
+	}
 	return ret
 }
