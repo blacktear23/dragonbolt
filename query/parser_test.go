@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-/*
 func TestParser1(t *testing.T) {
 	query := "where key = 'test' & value = 'value'"
 	p := NewParser(query)
@@ -194,7 +193,6 @@ func TestParser18(t *testing.T) {
 	fmt.Printf("%+v\n", *expr.Limit)
 	fmt.Printf("%+v\n", *expr)
 }
-*/
 
 func TestParser19(t *testing.T) {
 	query := "select key, int(value) where key ^= 'key' order by key limit 20, 10"

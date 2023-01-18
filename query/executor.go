@@ -188,14 +188,20 @@ func (e *BinaryOpExpr) execAnd(kv KVPair) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	left, lok := rleft.(bool)
+	if !lok {
+		return false, errors.New("& left value type not bool")
+	}
+	if !left {
+		return false, nil
+	}
 	rright, err := e.Right.Execute(kv)
 	if err != nil {
 		return false, err
 	}
-	left, lok := rleft.(bool)
 	right, rok := rright.(bool)
-	if !lok || !rok {
-		return false, errors.New("& left value error")
+	if !rok {
+		return false, errors.New("& right value type not bool")
 	}
 	return left && right, nil
 }
@@ -205,14 +211,20 @@ func (e *BinaryOpExpr) execOr(kv KVPair) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	left, lok := rleft.(bool)
+	if !lok {
+		return false, errors.New("| left value type not bool")
+	}
+	if left {
+		return true, nil
+	}
 	rright, err := e.Right.Execute(kv)
 	if err != nil {
 		return false, err
 	}
-	left, lok := rleft.(bool)
 	right, rok := rright.(bool)
-	if !lok || !rok {
-		return false, errors.New("| left value error")
+	if !rok {
+		return false, errors.New("| right value type not bool")
 	}
 	return left || right, nil
 }

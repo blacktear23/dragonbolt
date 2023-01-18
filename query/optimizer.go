@@ -69,6 +69,16 @@ func (o *Optimizer) buildLimitPlan(t txn.Txn, fp Plan) Plan {
 }
 
 func (o *Optimizer) buildOrderPlan(t txn.Txn, fp Plan) Plan {
+	if len(o.stmt.Order.Orders) == 1 {
+		order := o.stmt.Order.Orders[0]
+		switch expr := order.Field.(type) {
+		case *FieldExpr:
+			// If order by key asc just ignore it
+			if expr.Field == KeyKW && order.Order == ASC {
+				return nil
+			}
+		}
+	}
 	return &OrderPlan{
 		Txn:       t,
 		Orders:    o.stmt.Order.Orders,
