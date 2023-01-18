@@ -75,7 +75,7 @@ func (o *Optimizer) buildOrderPlan(t txn.Txn, fp Plan) Plan {
 		case *FieldExpr:
 			// If order by key asc just ignore it
 			if expr.Field == KeyKW && order.Order == ASC {
-				return nil
+				return fp
 			}
 		}
 	}
