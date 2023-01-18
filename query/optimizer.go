@@ -5,11 +5,9 @@ import (
 )
 
 type Optimizer struct {
-	Query     string
-	filter    *FilterExec
-	allFields bool
-	fields    []Expression
-	limitStmt *LimitStmt
+	Query  string
+	stmt   *SelectStmt
+	filter *FilterExec
 }
 
 func NewOptimizer(query string) *Optimizer {
@@ -18,58 +16,68 @@ func NewOptimizer(query string) *Optimizer {
 	}
 }
 
-func (o *Optimizer) BuildPlan(t txn.Txn) (*ProjectionPlan, error) {
-	err := o.buildFilter()
+func (o *Optimizer) init() error {
+	p := NewParser(o.Query)
+	stmt, err := p.Parse()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	fp, err := o.buildPlan(t)
+	o.stmt = stmt
+	o.filter = &FilterExec{
+		Ast: stmt.Where,
+	}
+	return nil
+}
+
+func (o *Optimizer) BuildPlan(t txn.Txn) (*ProjectionPlan, error) {
+	err := o.init()
 	if err != nil {
 		return nil, err
 	}
 
-	if o.limitStmt != nil {
+	// Build Scan
+	fp := o.buildScanPlan(t)
+	// Build order
+	if o.stmt.Order != nil {
+		fp = o.buildOrderPlan(t, fp)
+	}
+
+	// Build limit
+	if o.stmt.Limit != nil {
 		fp = o.buildLimitPlan(t, fp)
+	}
+
+	if err = fp.Init(); err != nil {
+		return nil, err
 	}
 
 	return &ProjectionPlan{
 		Txn:       t,
 		ChildPlan: fp,
-		AllFields: o.allFields,
-		Fields:    o.fields,
+		AllFields: o.stmt.AllFields,
+		Fields:    o.stmt.Fields,
 	}, nil
 }
 
 func (o *Optimizer) buildLimitPlan(t txn.Txn, fp Plan) Plan {
 	return &LimitPlan{
 		Txn:       t,
-		Start:     o.limitStmt.Start,
-		Count:     o.limitStmt.Count,
-		current:   0,
+		Start:     o.stmt.Limit.Start,
+		Count:     o.stmt.Limit.Count,
 		ChildPlan: fp,
 	}
 }
 
-func (o *Optimizer) buildFilter() error {
-	selectStmt, filter, err := BuildExecutor(o.Query)
-	if err != nil {
-		return err
+func (o *Optimizer) buildOrderPlan(t txn.Txn, fp Plan) Plan {
+	return &OrderPlan{
+		Txn:       t,
+		Orders:    o.stmt.Order.Orders,
+		ChildPlan: fp,
 	}
-	o.filter = filter
-	o.allFields = selectStmt.AllFields
-	o.fields = selectStmt.Fields
-	o.limitStmt = selectStmt.Limit
-	return nil
 }
 
-func (o *Optimizer) buildPlan(t txn.Txn) (Plan, error) {
-	plan := o.doOptimize(t)
-	// fmt.Println("[DEBUG]", plan.String())
-	err := plan.Init()
-	if err != nil {
-		return nil, err
-	}
-	return plan, nil
+func (o *Optimizer) buildScanPlan(t txn.Txn) Plan {
+	return o.doOptimize(t)
 }
 
 func (o *Optimizer) doOptimize(t txn.Txn) Plan {

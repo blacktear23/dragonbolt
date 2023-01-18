@@ -112,3 +112,30 @@ func TestLexer12(t *testing.T) {
 		fmt.Printf("%s\n", t.String())
 	}
 }
+
+func TestLexer13(t *testing.T) {
+	query := "select * where key ^= 'asdf' order by key"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}
+
+func TestLexer14(t *testing.T) {
+	query := "select * where key ^= 'asdf' order by key asc"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}
+
+func TestLexer15(t *testing.T) {
+	query := "select * where key ^= 'asdf' order by key desc"
+	l := NewLexer(query)
+	toks := l.Split()
+	for _, t := range toks {
+		fmt.Printf("%s\n", t.String())
+	}
+}

@@ -345,6 +345,62 @@ func (p *Parser) parseLimit() (*LimitStmt, error) {
 	return ret, nil
 }
 
+func (p *Parser) parseOrderBy() (*OrderStmt, error) {
+	var (
+		err         error
+		shouldBreak bool         = false
+		fields      []OrderField = make([]OrderField, 0, 2)
+		ret         *OrderStmt   = &OrderStmt{}
+	)
+	err = p.expect(&Token{Tp: ORDER, Data: "order"})
+	if err != nil {
+		return nil, err
+	}
+	err = p.expect(&Token{Tp: BY, Data: "by"})
+	if err != nil {
+		return nil, err
+	}
+	p.exprLev++
+	for p.tok != nil && !shouldBreak {
+		field, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		of := OrderField{
+			Field: field,
+			Order: ASC,
+		}
+		if p.tok != nil {
+			switch p.tok.Tp {
+			case SEP:
+				p.next()
+			case ASC:
+				of.Order = ASC
+				p.next()
+				if p.tok != nil && p.tok.Tp == SEP {
+					p.next()
+				} else {
+					shouldBreak = true
+				}
+			case DESC:
+				of.Order = DESC
+				p.next()
+				if p.tok != nil && p.tok.Tp == SEP {
+					p.next()
+				} else {
+					shouldBreak = true
+				}
+			default:
+				shouldBreak = true
+			}
+		}
+		fields = append(fields, of)
+	}
+	p.exprLev--
+	ret.Orders = fields
+	return ret, nil
+}
+
 func (p *Parser) Parse() (*SelectStmt, error) {
 	if p.numToks == 0 {
 		return nil, ErrSyntaxStartWhere
@@ -356,6 +412,7 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 	var (
 		selectStmt *SelectStmt = nil
 		limitStmt  *LimitStmt  = nil
+		orderStmt  *OrderStmt  = nil
 		err        error
 	)
 
@@ -376,12 +433,26 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 		return nil, err
 	}
 
-	if p.tok != nil {
+	for p.tok != nil {
 		switch p.tok.Tp {
+		case ORDER:
+			if orderStmt != nil {
+				return nil, errors.New("Syntax error duplicate order by expression")
+			}
+			orderStmt, err = p.parseOrderBy()
+			if err != nil {
+				return nil, err
+			}
 		case LIMIT:
+			if limitStmt != nil {
+				return nil, errors.New("Syntax error duplicate limit expression")
+			}
 			limitStmt, err = p.parseLimit()
 			if err != nil {
 				return nil, err
+			}
+			if p.tok != nil {
+				return nil, errors.New("Syntax error has more expression after limit keyword")
 			}
 		default:
 			return nil, errors.New("Syntax error missing operator")
@@ -404,5 +475,6 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 	}
 	selectStmt.Where = whereStmt
 	selectStmt.Limit = limitStmt
+	selectStmt.Order = orderStmt
 	return selectStmt, nil
 }

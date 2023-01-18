@@ -22,14 +22,18 @@ const (
 	NUMBER   TokenType = 11
 	FLOAT    TokenType = 12
 	LIMIT    TokenType = 13
+	ORDER    TokenType = 14
+	BY       TokenType = 15
+	ASC      TokenType = 16
+	DESC     TokenType = 17
 )
 
 var (
 	TokenTypeToString = map[TokenType]string{
-		SELECT:   "select",
-		WHERE:    "where",
-		KEY:      "key",
-		VALUE:    "value",
+		SELECT:   "SELECT",
+		WHERE:    "WHERE",
+		KEY:      "KEY",
+		VALUE:    "VALUE",
 		OPERATOR: "OP",
 		STRING:   "STR",
 		LPAREN:   "(",
@@ -39,6 +43,10 @@ var (
 		NUMBER:   "NUM",
 		FLOAT:    "FLOAT",
 		LIMIT:    "LIMIT",
+		ORDER:    "ORDER",
+		BY:       "BY",
+		ASC:      "ASC",
+		DESC:     "DESC",
 	}
 )
 
@@ -311,6 +319,18 @@ func buildToken(curr string, pos int) *Token {
 		return token
 	case "limit":
 		token.Tp = LIMIT
+		return token
+	case "order":
+		token.Tp = ORDER
+		return token
+	case "by":
+		token.Tp = BY
+		return token
+	case "asc":
+		token.Tp = ASC
+		return token
+	case "desc":
+		token.Tp = DESC
 		return token
 	default:
 		if isNumber(curr) {

@@ -130,11 +130,21 @@ type SelectStmt struct {
 	AllFields bool
 	Fields    []Expression
 	Where     *WhereStmt
+	Order     *OrderStmt
 	Limit     *LimitStmt
 }
 
 type WhereStmt struct {
 	Expr Expression
+}
+
+type OrderField struct {
+	Field Expression
+	Order TokenType
+}
+
+type OrderStmt struct {
+	Orders []OrderField
 }
 
 type LimitStmt struct {
