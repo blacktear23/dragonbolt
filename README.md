@@ -102,6 +102,8 @@ WhereCondition := Expr {LogicOp Expr}
 
 String := '"' Chars '"'
 
+Boolean := ("true" | "false")
+
 LogicOp := "|" | "&"
 
 NotOp := "!"
@@ -117,7 +119,7 @@ FuncArg := (Field | Number | String | Expr)
 
 FunctionCall := FuncName "(" FuncArg { "," FuncArg } ")"
 
-OpParam := (Field | String | FunctionCall | Number)
+OpParam := (Field | String | FunctionCall | Number | Boolean)
 
 Expr := [NotOp] OpParam BinaryOp OpParam |
         "(" [NotOp] OpParam BinaryOp OpParam ")"
@@ -158,6 +160,8 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 * `str(val)`: 转换为字符串
 * `upper(val)`: 转换成大写字母
 * `lower(val)`: 转换成小写字母
+*  `is_int(val)`: 返回值是否为数字
+*  `is_float(val)`: 返回值是否为浮点数
 
 例子：
 
@@ -173,4 +177,5 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 > query "select * where key ^= 'k' limit 5, 10"
 > query "select * where key ^= 'k' order by value desc"
 > query "select * where key ^= 'k' order by key desc, value asc limit 10"
+> query "select * where is_int(value) order by key limit 10"
 ```
