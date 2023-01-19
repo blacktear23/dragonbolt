@@ -67,6 +67,7 @@ func TestParser6(t *testing.T) {
 }
 
 func TestParser7(t *testing.T) {
+	funcMap["func_name"] = &Function{"func_name", 2, false, TBOOL, nil}
 	query := "where func_name(key, 'test')"
 	p := NewParser(query)
 	expr, err := p.Parse()
@@ -77,6 +78,7 @@ func TestParser7(t *testing.T) {
 }
 
 func TestParser8(t *testing.T) {
+	funcMap["func_name"] = &Function{"func_name", 2, false, TSTR, nil}
 	query := "where func_name(key, 'test') ^= 'name'"
 	p := NewParser(query)
 	expr, err := p.Parse()
@@ -87,6 +89,7 @@ func TestParser8(t *testing.T) {
 }
 
 func TestParser9(t *testing.T) {
+	funcMap["func_name"] = &Function{"func_name", 2, false, TSTR, nil}
 	query := "where (func_name(key, 'test') ^= 'name') & (func_name2(value) | value ^= 't')"
 	p := NewParser(query)
 	expr, err := p.Parse()
@@ -98,6 +101,7 @@ func TestParser9(t *testing.T) {
 }
 
 func TestParser10(t *testing.T) {
+	funcMap["func1"] = &Function{"func1", 2, false, TBOOL, nil}
 	query := "where func1(func2(key), '')"
 	p := NewParser(query)
 	expr, err := p.Parse()
@@ -108,6 +112,7 @@ func TestParser10(t *testing.T) {
 }
 
 func TestParser11(t *testing.T) {
+	funcMap["func1"] = &Function{"func1", 2, false, TBOOL, nil}
 	query := "where func1(func2(key), '', func3(func4('1', '2'), '5'))"
 	p := NewParser(query)
 	expr, err := p.Parse()
@@ -118,6 +123,7 @@ func TestParser11(t *testing.T) {
 }
 
 func TestParser12(t *testing.T) {
+	funcMap["func1"] = &Function{"func1", 2, false, TBOOL, nil}
 	query := "where func1(func2(key), func3(func4('1', '2'), '5'), func5())"
 	p := NewParser(query)
 	expr, err := p.Parse()
@@ -128,6 +134,7 @@ func TestParser12(t *testing.T) {
 }
 
 func TestParser13(t *testing.T) {
+	funcMap["func1"] = &Function{"func1", 2, false, TBOOL, nil}
 	query := "where func1(key, func2(), (key = 'test'))"
 	p := NewParser(query)
 	expr, err := p.Parse()

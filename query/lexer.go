@@ -26,6 +26,8 @@ const (
 	BY       TokenType = 15
 	ASC      TokenType = 16
 	DESC     TokenType = 17
+	TRUE     TokenType = 18
+	FALSE    TokenType = 19
 )
 
 var (
@@ -47,6 +49,8 @@ var (
 		BY:       "BY",
 		ASC:      "ASC",
 		DESC:     "DESC",
+		TRUE:     "true",
+		FALSE:    "false",
 	}
 )
 
@@ -331,6 +335,12 @@ func buildToken(curr string, pos int) *Token {
 		return token
 	case "desc":
 		token.Tp = DESC
+		return token
+	case "true":
+		token.Tp = TRUE
+		return token
+	case "false":
+		token.Tp = FALSE
 		return token
 	default:
 		if isNumber(curr) {

@@ -120,19 +120,25 @@ func (e *BinaryOpExpr) execEqual(kv KVPair) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	left, lok := convertToByteArray(rleft)
-	right, rok := convertToByteArray(rright)
-	if !lok || !rok {
-		return e.execIntEquals(rleft, rright)
-	}
-	return bytes.Equal(left, right), nil
-}
-
-func (e *BinaryOpExpr) execIntEquals(left any, right any) (bool, error) {
-	lint, liok := convertToInt(left)
-	rint, riok := convertToInt(right)
-	if liok && riok {
-		return lint == rint, nil
+	switch rleft.(type) {
+	case string, []byte:
+		left, lok := convertToByteArray(rleft)
+		right, rok := convertToByteArray(rright)
+		if lok && rok {
+			return bytes.Equal(left, right), nil
+		}
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		lint, lok := convertToInt(rleft)
+		rint, rok := convertToInt(rright)
+		if lok && rok {
+			return lint == rint, nil
+		}
+	case bool:
+		lbool, lok := rleft.(bool)
+		rbool, rok := rright.(bool)
+		if lok && rok {
+			return lbool == rbool, nil
+		}
 	}
 	return false, errors.New("Invalid = operator left type")
 }
@@ -301,4 +307,8 @@ func (e *NumberExpr) Execute(kv KVPair) (any, error) {
 
 func (e *FloatExpr) Execute(kv KVPair) (any, error) {
 	return e.Float, nil
+}
+
+func (e *BoolExpr) Execute(kv KVPair) (any, error) {
+	return e.Bool, nil
 }

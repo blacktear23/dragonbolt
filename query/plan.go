@@ -364,6 +364,8 @@ func (l *orderRow) Less(r *orderRow) bool {
 			compare = l.compareFloat(lval, rval, order.Order == DESC)
 		case []byte, string:
 			compare = l.compareBytes(lval, rval, order.Order == DESC)
+		case bool:
+			compare = l.compareBool(lval, rval, order.Order == DESC)
 		default:
 			return false
 		}
@@ -374,6 +376,34 @@ func (l *orderRow) Less(r *orderRow) bool {
 		}
 	}
 	return false
+}
+
+func (l *orderRow) compareBool(lval, rval any, reverse bool) int {
+	lbool := lval.(bool)
+	rbool := rval.(bool)
+	lint := 0
+	rint := 0
+	if lbool {
+		lint = 1
+	}
+	if rbool {
+		rint = 1
+	}
+	if lint == rint {
+		return 0
+	}
+	if reverse {
+		if lint > rint {
+			return -1
+		} else {
+			return 1
+		}
+	}
+	if lint < rint {
+		return -1
+	} else {
+		return 1
+	}
 }
 
 func (l *orderRow) compareInt(lval, rval any, reverse bool) int {

@@ -8,21 +8,24 @@ import (
 
 var (
 	funcMap = map[string]*Function{
-		"lower": &Function{"lower", 1, false, funcToLower},
-		"upper": &Function{"upper", 1, false, funcToUpper},
-		"int":   &Function{"int", 1, false, funcToInt},
-		"float": &Function{"float", 1, false, funcToFloat},
-		"str":   &Function{"str", 1, false, funcToString},
+		"lower":    &Function{"lower", 1, false, TSTR, funcToLower},
+		"upper":    &Function{"upper", 1, false, TSTR, funcToUpper},
+		"int":      &Function{"int", 1, false, TNUMBER, funcToInt},
+		"float":    &Function{"float", 1, false, TNUMBER, funcToFloat},
+		"str":      &Function{"str", 1, false, TSTR, funcToString},
+		"is_int":   &Function{"is_int", 1, false, TBOOL, funcIsInt},
+		"is_float": &Function{"is_float", 1, false, TBOOL, funcIsFloat},
 	}
 )
 
 type FunctionBody func(kv KVPair, args []Expression) (any, error)
 
 type Function struct {
-	Name    string
-	NumArgs int
-	VarArgs bool
-	Body    FunctionBody
+	Name       string
+	NumArgs    int
+	VarArgs    bool
+	ReturnType Type
+	Body       FunctionBody
 }
 
 func toString(value any) string {
@@ -35,6 +38,11 @@ func toString(value any) string {
 		return fmt.Sprintf("%d", val)
 	case float32, float64:
 		return fmt.Sprintf("%f", val)
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
 	default:
 		if val == nil {
 			return "<nil>"
@@ -144,4 +152,44 @@ func funcToString(kv KVPair, args []Expression) (any, error) {
 	}
 	ret := toString(rarg)
 	return ret, nil
+}
+
+func funcIsInt(kv KVPair, args []Expression) (any, error) {
+	rarg, err := args[0].Execute(kv)
+	if err != nil {
+		return nil, err
+	}
+	switch val := rarg.(type) {
+	case string:
+		if _, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return true, nil
+		}
+	case []byte:
+		if _, err := strconv.ParseInt(string(val), 10, 64); err == nil {
+			return true, nil
+		}
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return true, nil
+	}
+	return false, nil
+}
+
+func funcIsFloat(kv KVPair, args []Expression) (any, error) {
+	rarg, err := args[0].Execute(kv)
+	if err != nil {
+		return nil, err
+	}
+	switch val := rarg.(type) {
+	case string:
+		if _, err := strconv.ParseFloat(val, 64); err == nil {
+			return true, nil
+		}
+	case []byte:
+		if _, err := strconv.ParseFloat(string(val), 64); err == nil {
+			return true, nil
+		}
+	case float32, float64:
+		return true, nil
+	}
+	return false, nil
 }

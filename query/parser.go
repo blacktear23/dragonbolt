@@ -252,6 +252,14 @@ func (p *Parser) parseOperand() (Expression, error) {
 		x := newFloatExpr(p.tok.Data)
 		p.next()
 		return x, nil
+	case TRUE:
+		x := &BoolExpr{Data: p.tok.Data, Bool: true}
+		p.next()
+		return x, nil
+	case FALSE:
+		x := &BoolExpr{Data: p.tok.Data, Bool: false}
+		p.next()
+		return x, nil
 	}
 	return nil, errors.New("Bad Expression")
 }
@@ -366,6 +374,12 @@ func (p *Parser) parseOrderBy() (*OrderStmt, error) {
 		if err != nil {
 			return nil, err
 		}
+		switch field.ReturnType() {
+		case TSTR, TNUMBER, TBOOL:
+			break
+		default:
+			return nil, errors.New("Syntax error: order by field is wrong type.")
+		}
 		of := OrderField{
 			Field: field,
 			Order: ASC,
@@ -463,6 +477,9 @@ func (p *Parser) Parse() (*SelectStmt, error) {
 	err = expr.Check()
 	if err != nil {
 		return nil, err
+	}
+	if expr.ReturnType() != TBOOL {
+		return nil, errors.New("Syntax error where should follow bool result expression")
 	}
 	whereStmt := &WhereStmt{
 		Expr: expr,

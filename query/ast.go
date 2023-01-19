@@ -16,6 +16,7 @@ Query Examples:
 
 type KVKeyword byte
 type Operator byte
+type Type byte
 
 const (
 	KeyKW   KVKeyword = 1
@@ -37,6 +38,12 @@ const (
 	Gte         Operator = 13
 	Lt          Operator = 14
 	Lte         Operator = 15
+
+	TUNKNOWN Type = 0
+	TBOOL    Type = 1
+	TSTR     Type = 2
+	TNUMBER  Type = 3
+	TIDENT   Type = 4
 )
 
 var (
@@ -118,12 +125,14 @@ var (
 	_ Expression = (*NameExpr)(nil)
 	_ Expression = (*NumberExpr)(nil)
 	_ Expression = (*FloatExpr)(nil)
+	_ Expression = (*BoolExpr)(nil)
 )
 
 type Expression interface {
 	Check() error
 	String() string
 	Execute(kv KVPair) (any, error)
+	ReturnType() Type
 }
 
 type SelectStmt struct {
@@ -163,12 +172,26 @@ func (e *BinaryOpExpr) String() string {
 	return fmt.Sprintf("{%s %s %s}", e.Left.String(), op, e.Right.String())
 }
 
+func (e *BinaryOpExpr) ReturnType() Type {
+	switch e.Op {
+	case And, Or, Not, Eq, NotEq, PrefixMatch, RegExpMatch, Gt, Gte, Lt, Lte:
+		return TBOOL
+	case Add, Sub, Mul, Div:
+		return TNUMBER
+	}
+	return TUNKNOWN
+}
+
 type FieldExpr struct {
 	Field KVKeyword
 }
 
 func (e *FieldExpr) String() string {
 	return fmt.Sprintf("%s", KVKeywordToString[e.Field])
+}
+
+func (e *FieldExpr) ReturnType() Type {
+	return TSTR
 }
 
 type StringExpr struct {
@@ -179,12 +202,20 @@ func (e *StringExpr) String() string {
 	return fmt.Sprintf("`%s`", e.Data)
 }
 
+func (e *StringExpr) ReturnType() Type {
+	return TSTR
+}
+
 type NotExpr struct {
 	Right Expression
 }
 
 func (e *NotExpr) String() string {
 	return fmt.Sprintf("!{%s}", e.Right.String())
+}
+
+func (e *NotExpr) ReturnType() Type {
+	return TBOOL
 }
 
 type FunctionCallExpr struct {
@@ -200,12 +231,32 @@ func (e *FunctionCallExpr) String() string {
 	return fmt.Sprintf("[%s]{%s}", e.Name.String(), strings.Join(args, ", "))
 }
 
+func (e *FunctionCallExpr) ReturnType() Type {
+	rfname, err := e.Name.Execute(KVPair{nil, nil})
+	if err != nil {
+		return TUNKNOWN
+	}
+	fname, ok := rfname.(string)
+	if !ok {
+		return TUNKNOWN
+	}
+	fnameKey := strings.ToLower(fname)
+	if funcObj, have := funcMap[fnameKey]; have {
+		return funcObj.ReturnType
+	}
+	return TUNKNOWN
+}
+
 type NameExpr struct {
 	Data string
 }
 
 func (e *NameExpr) String() string {
 	return fmt.Sprintf("%s", e.Data)
+}
+
+func (e *NameExpr) ReturnType() Type {
+	return TIDENT
 }
 
 type NumberExpr struct {
@@ -228,6 +279,10 @@ func (e *NumberExpr) String() string {
 	return fmt.Sprintf("%s", e.Data)
 }
 
+func (e *NumberExpr) ReturnType() Type {
+	return TNUMBER
+}
+
 type FloatExpr struct {
 	Data  string
 	Float float64
@@ -246,4 +301,21 @@ func newFloatExpr(data string) *FloatExpr {
 
 func (e *FloatExpr) String() string {
 	return fmt.Sprintf("%s", e.Data)
+}
+
+func (e *FloatExpr) ReturnType() Type {
+	return TNUMBER
+}
+
+type BoolExpr struct {
+	Data string
+	Bool bool
+}
+
+func (e *BoolExpr) String() string {
+	return fmt.Sprintf("%s", e.Data)
+}
+
+func (e *BoolExpr) ReturnType() Type {
+	return TBOOL
 }
