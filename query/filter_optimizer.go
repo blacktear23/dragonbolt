@@ -7,6 +7,10 @@ import (
 	"github.com/blacktear23/dragonbolt/txn"
 )
 
+/*
+ * Scan Type is priority of scan operator
+ * Lower value operator means the result set is smaller than higher value operator
+ */
 const (
 	EMPTY  byte = 1
 	MGET   byte = 2
@@ -66,13 +70,17 @@ func (o *FilterOptimizer) optimizeExpr(expr Expression) *ScanType {
 		case Or:
 			return o.optimizeOrExpr(e)
 		case PrefixMatch:
+			// It may use PREFIX or FULL
 			return o.optimizePrefixMatchExpr(e)
 		case Eq:
+			// It may use MGET or FULL
 			return o.optimizeEqualExpr(e)
 		default:
+			// Other operator use FULL
 			return &ScanType{FULL, nil}
 		}
 	default:
+		// Other expression use FULL
 		return &ScanType{FULL, nil}
 	}
 }
@@ -142,21 +150,25 @@ func (o *FilterOptimizer) optimizeAndExpr(e *BinaryOpExpr) *ScanType {
 	if lstype.scanTp == rstype.scanTp {
 		switch lstype.scanTp {
 		case MGET:
+			// Intersection two mget scan operation keys
 			return o.intersectionMget(lstype, rstype)
 		case PREFIX:
+			// Intersection two prefix scan operation prefixes
 			return o.intersectionPrefix(lstype, rstype)
 		}
 		return lstype
 	}
 
-	// just return lower scan type operation
+	// just return lower priority of scan type operation
 	if lstype.scanTp < rstype.scanTp {
 		if lstype.scanTp == MGET && rstype.scanTp == PREFIX {
+			// Process MGET & PREFIX, it may use MGET or EMPTY
 			return o.intersectionMgetAndPrefix(lstype, rstype)
 		}
 		return lstype
 	}
 	if rstype.scanTp == MGET && lstype.scanTp == PREFIX {
+		// Process MGET & PREFIX, it may use MGET or EMPTY
 		return o.intersectionMgetAndPrefix(rstype, lstype)
 	}
 	return rstype
@@ -168,21 +180,25 @@ func (o *FilterOptimizer) optimizeOrExpr(e *BinaryOpExpr) *ScanType {
 	if lstype.scanTp == rstype.scanTp {
 		switch lstype.scanTp {
 		case MGET:
+			// Union two mget scan operation keys
 			return o.unionMget(lstype, rstype)
 		case PREFIX:
+			// Union two prefix scan operation prefixes
 			return o.unionPrefix(lstype, rstype)
 		}
 		return lstype
 	}
 
-	// just return higher scan type operation
+	// just return higher priority scan type operation
 	if lstype.scanTp < rstype.scanTp {
 		if lstype.scanTp == MGET && rstype.scanTp == PREFIX {
+			// Process MGET | PREFIX, it may use PREFIX or FULL
 			return o.unionMgetAndPrefix(lstype, rstype)
 		}
 		return rstype
 	}
 	if rstype.scanTp == MGET && rstype.scanTp == PREFIX {
+		// Process MGET | PREFIX, it may use PREFIX or FULL
 		return o.unionMgetAndPrefix(rstype, lstype)
 	}
 	return lstype
@@ -191,7 +207,8 @@ func (o *FilterOptimizer) optimizeOrExpr(e *BinaryOpExpr) *ScanType {
 func (o *FilterOptimizer) intersectionMgetAndPrefix(mget, prefix *ScanType) *ScanType {
 	ikeys := [][]byte{}
 	prefixKey := prefix.keys[0]
-	// Check keys for prefix
+
+	// Check keys with prefix
 	for _, k := range mget.keys {
 		if bytes.HasPrefix(k, prefixKey) {
 			ikeys = append(ikeys, k)
@@ -209,6 +226,8 @@ func (o *FilterOptimizer) intersectionMgetAndPrefix(mget, prefix *ScanType) *Sca
 func (o *FilterOptimizer) unionMgetAndPrefix(mget, prefix *ScanType) *ScanType {
 	havePrefixNotMatch := false
 	prefixKey := prefix.keys[0]
+
+	// Check keys with prefix
 	for _, k := range mget.keys {
 		if !bytes.HasPrefix(k, prefixKey) {
 			havePrefixNotMatch = true
@@ -236,6 +255,7 @@ func (o *FilterOptimizer) intersectionMget(l, r *ScanType) *ScanType {
 		rkeys[string(k)] = k
 	}
 
+	// filter the keys that in both keys
 	for lk, lv := range lkeys {
 		if _, have := rkeys[lk]; have {
 			keys = append(keys, lv)
@@ -252,6 +272,8 @@ func (o *FilterOptimizer) intersectionMget(l, r *ScanType) *ScanType {
 func (o *FilterOptimizer) unionMget(l, r *ScanType) *ScanType {
 	keys := [][]byte{}
 	ukeys := map[string][]byte{}
+
+	// Merge two mget scan keys into one map
 	for _, k := range l.keys {
 		ukeys[string(k)] = k
 	}
@@ -273,6 +295,8 @@ func (o *FilterOptimizer) unionMget(l, r *ScanType) *ScanType {
 func (o *FilterOptimizer) intersectionPrefix(l, r *ScanType) *ScanType {
 	lks := string(l.keys[0])
 	rks := string(r.keys[0])
+
+	// If two prefix is same just return left
 	if lks == rks {
 		return l
 	}
@@ -285,7 +309,8 @@ func (o *FilterOptimizer) intersectionPrefix(l, r *ScanType) *ScanType {
 	if rks < lks && strings.HasPrefix(lks, rks) {
 		return l
 	}
-	// one prefix not another's prefix means no keys should be scan
+
+	// short prefix is not long prefix's prefix means no keys should be scan
 	// just return empty scan
 	return &ScanType{EMPTY, nil}
 }
@@ -293,6 +318,8 @@ func (o *FilterOptimizer) intersectionPrefix(l, r *ScanType) *ScanType {
 func (o *FilterOptimizer) unionPrefix(l, r *ScanType) *ScanType {
 	lks := string(l.keys[0])
 	rks := string(r.keys[0])
+
+	// If two prefix is same just return left
 	if lks == rks {
 		return l
 	}
@@ -306,7 +333,7 @@ func (o *FilterOptimizer) unionPrefix(l, r *ScanType) *ScanType {
 		return r
 	}
 
-	// one prefix not another's prefix means all keys should be scan
+	// short prefix is not long prefix's prefix means all keys should be scan
 	// just return full scan
 	return &ScanType{FULL, nil}
 }
