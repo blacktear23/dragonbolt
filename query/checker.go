@@ -53,7 +53,7 @@ func (e *BinaryOpExpr) checkWithMath() error {
 
 	switch exp := e.Right.(type) {
 	case *BinaryOpExpr, *FunctionCallExpr, *NumberExpr, *FloatExpr:
-		if e.Left.ReturnType() != TNUMBER {
+		if e.Right.ReturnType() != TNUMBER {
 			return fmt.Errorf("Syntax Error: %s operator has wrong type of right expression %s", op, exp)
 		}
 	default:
@@ -80,7 +80,7 @@ func (e *BinaryOpExpr) checkWithCompares() error {
 		}
 	case *FunctionCallExpr:
 		numCallExpr++
-	case *StringExpr, *BoolExpr:
+	case *StringExpr, *BoolExpr, *NumberExpr, *FloatExpr:
 	default:
 		return fmt.Errorf("Syntax Error: %s operator with invalid left expression", op)
 	}
@@ -95,10 +95,11 @@ func (e *BinaryOpExpr) checkWithCompares() error {
 		}
 	case *FunctionCallExpr:
 		numCallExpr++
-	case *StringExpr, *BoolExpr:
+	case *StringExpr, *BoolExpr, *NumberExpr, *FloatExpr:
 	default:
 		return fmt.Errorf("Syntax Error: %s operator with invalid right expression", op)
 	}
+
 	if numKeyFieldExpr == 2 || numValueFieldExpr == 2 {
 		return fmt.Errorf("Syntax Error: %s operator with two same field", op)
 	}
