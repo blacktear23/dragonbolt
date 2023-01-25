@@ -169,7 +169,7 @@ type BinaryOpExpr struct {
 
 func (e *BinaryOpExpr) String() string {
 	op := OperatorToString[e.Op]
-	return fmt.Sprintf("{%s %s %s}", e.Left.String(), op, e.Right.String())
+	return fmt.Sprintf("(%s %s %s)", e.Left.String(), op, e.Right.String())
 }
 
 func (e *BinaryOpExpr) ReturnType() Type {
@@ -211,7 +211,7 @@ type NotExpr struct {
 }
 
 func (e *NotExpr) String() string {
-	return fmt.Sprintf("!{%s}", e.Right.String())
+	return fmt.Sprintf("!(%s)", e.Right.String())
 }
 
 func (e *NotExpr) ReturnType() Type {

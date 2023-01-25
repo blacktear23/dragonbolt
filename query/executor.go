@@ -39,6 +39,10 @@ type FilterExec struct {
 	Ast *WhereStmt
 }
 
+func (e *FilterExec) Explain() string {
+	return e.Ast.Expr.String()
+}
+
 func (e *FilterExec) Filter(kvp KVPair) (bool, error) {
 	ret, err := e.FilterBatch([]KVPair{kvp})
 	if err != nil {

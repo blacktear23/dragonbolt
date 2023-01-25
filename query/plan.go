@@ -42,7 +42,7 @@ func NewFullScanPlan(t txn.Txn, f *FilterExec) Plan {
 }
 
 func (p *FullScanPlan) String() string {
-	return "FullScanPlan"
+	return fmt.Sprintf("FullScanPlan{Filter = '%s'}", p.Filter.Explain())
 }
 
 func (p *FullScanPlan) Explain() []string {
@@ -151,7 +151,7 @@ func (p *PrefixScanPlan) Next() ([]byte, []byte, error) {
 }
 
 func (p *PrefixScanPlan) String() string {
-	return fmt.Sprintf("PrefixScanPlan{Prefix = '%s'}", p.Prefix)
+	return fmt.Sprintf("PrefixScanPlan{Prefix = '%s', Filter = '%s'}", p.Prefix, p.Filter.Explain())
 }
 
 func (p *PrefixScanPlan) Explain() []string {
@@ -208,7 +208,7 @@ func (p *MultiGetPlan) Next() ([]byte, []byte, error) {
 
 func (p *MultiGetPlan) String() string {
 	keys := strings.Join(p.Keys, ", ")
-	return fmt.Sprintf("MultiGetPlan{Keys = <%s>}", keys)
+	return fmt.Sprintf("MultiGetPlan{Keys = <%s>, Filter = '%s'}", keys, p.Filter.Explain())
 }
 
 func (p *MultiGetPlan) Explain() []string {
