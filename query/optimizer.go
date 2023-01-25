@@ -87,7 +87,8 @@ func (o *Optimizer) buildOrderPlan(t txn.Txn, fp Plan) Plan {
 }
 
 func (o *Optimizer) buildScanPlan(t txn.Txn) Plan {
-	return o.doOptimize(t)
+	fopt := NewFilterOptimizer(o.filter.Ast, t, o.filter)
+	return fopt.Optimize()
 }
 
 func (o *Optimizer) doOptimize(t txn.Txn) Plan {
