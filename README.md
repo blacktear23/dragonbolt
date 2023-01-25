@@ -179,3 +179,35 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 > query "select * where key ^= 'k' order by key desc, value asc limit 10"
 > query "select * where is_int(value) order by key limit 10"
 ```
+
+## 关于查询计划
+
+**查询计划中支持的算子有：**
+
+* ProjectionPlan: 投影算子，计算 select 子句后面各个字段的表达式
+* LimitPlan: 集合大小限制算子，按照 limit 子句后面的数值跳过指定行数，并返回指定行数
+* OrderPlan: 排序算子，对扫描的结果进行排序
+* EmptyResultPlan: 空集合算子，返回空集合
+* PrefixScanPlan: 前缀扫描算子，扫描指定的前缀
+* MultiGetPlan: 批量Get算子，只取指定的`key`的集合
+* FullScanPlan: 全量扫描算子，扫描所有的`key`
+
+**执行计划树：**
+
+优化器会根据查询语句和最终优化结果构建执行计划树，每个执行计划会以 `ProjectionPlan` 为根节点，最终叶子节点为扫描类算子。例如：
+
+```
+ProjectionPlan
+	\- LimitPlan
+		\- OrderPlan
+			\- PrefixScanPlan
+```
+
+其中 `LimitPlan` 和 `OrderPlan` 会根据查询语句中是否有 `limit` 或 `order by` 子句进行增减。
+
+**优化器目前会做3种优化：**
+
+1. 根据 `where` 子句后面的表达式选择最优的扫描算子。
+2. 根据 `order by` 子句后面的排序列顺序做排序算子擦除。主要针对的是 `order by key asc` 条件做排序算子的擦除。
+3. 如果 `where` 计算出来的算子是 `EmptyResultPlan` 则忽略 `limit` 和 `order by` 子句的算子
+

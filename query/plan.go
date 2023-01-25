@@ -23,6 +23,7 @@ var (
 	_ Plan = (*PrefixScanPlan)(nil)
 	_ Plan = (*MultiGetPlan)(nil)
 	_ Plan = (*LimitPlan)(nil)
+	_ Plan = (*OrderPlan)(nil)
 )
 
 type Column []byte

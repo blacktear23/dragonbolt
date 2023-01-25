@@ -37,6 +37,22 @@ func (o *Optimizer) BuildPlan(t txn.Txn) (*ProjectionPlan, error) {
 
 	// Build Scan
 	fp := o.buildScanPlan(t)
+
+	// Just build an empty result plan so we can
+	// ignore order and limit plan just return
+	// the projection plan with empty result plan
+	if _, ok := fp.(*EmptyResultPlan); ok {
+		if err = fp.Init(); err != nil {
+			return nil, err
+		}
+		return &ProjectionPlan{
+			Txn:       t,
+			ChildPlan: fp,
+			AllFields: o.stmt.AllFields,
+			Fields:    o.stmt.Fields,
+		}, nil
+	}
+
 	// Build order
 	if o.stmt.Order != nil {
 		fp = o.buildOrderPlan(t, fp)
