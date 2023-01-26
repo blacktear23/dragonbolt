@@ -178,6 +178,7 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 > query "select * where key ^= 'k' order by value desc"
 > query "select * where key ^= 'k' order by key desc, value asc limit 10"
 > query "select * where is_int(value) order by key limit 10"
+> query "select * where key > 'k' & key < 'v'"
 ```
 
 ## 关于查询计划
@@ -189,6 +190,7 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 * OrderPlan: 排序算子，对扫描的结果进行排序
 * EmptyResultPlan: 空集合算子，返回空集合
 * PrefixScanPlan: 前缀扫描算子，扫描指定的前缀
+* RangeScanPlan: 区间扫描算子，扫描指定的区间
 * MultiGetPlan: 批量Get算子，只取指定的`key`的集合
 * FullScanPlan: 全量扫描算子，扫描所有的`key`
 
@@ -210,4 +212,3 @@ ProjectionPlan
 1. 根据 `where` 子句后面的表达式选择最优的扫描算子。
 2. 根据 `order by` 子句后面的排序列顺序做排序算子擦除。主要针对的是 `order by key asc` 条件做排序算子的擦除。
 3. 如果 `where` 计算出来的算子是 `EmptyResultPlan` 则忽略 `limit` 和 `order by` 子句的算子
-
