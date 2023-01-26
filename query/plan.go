@@ -173,6 +173,7 @@ type MultiGetPlan struct {
 }
 
 func NewMultiGetPlan(t txn.Txn, f *FilterExec, keys []string) Plan {
+	// We should sort keys to ensure order by erase works correctly
 	sort.Strings(keys)
 	return &MultiGetPlan{
 		Txn:     t,
