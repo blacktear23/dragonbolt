@@ -10,6 +10,7 @@ dragonbolt 使用 boltdb 作为基础的 Key-Value 存储，用 dragonboat 实�
 * boltdb: 提供底层的 Key-Value 存储，并提供基本事务
 * Redis 协议: 提供 Redis 协议兼容的服务，可以直接用 redis-cli 进行操作
 * MVCC: 提供 Repeatable Read 和 Read Committed 两种事务隔离级别
+* SQL on KV: 提供一套类 SQL 查询语言查询 Key-Value 数据库
 
 # Redis 命令
 
@@ -200,9 +201,9 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 
 ```
 ProjectionPlan
-	\- LimitPlan
-		\- OrderPlan
-			\- PrefixScanPlan
+  \- LimitPlan
+    \- OrderPlan
+      \- PrefixScanPlan
 ```
 
 其中 `LimitPlan` 和 `OrderPlan` 会根据查询语句中是否有 `limit` 或 `order by` 子句进行增减。
