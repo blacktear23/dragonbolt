@@ -120,6 +120,10 @@ func (o *FilterOptimizer) optimizeGtGteExpr(e *BinaryOpExpr) *ScanType {
 	// Is Key start vale and value can calculate in query,
 	// return RANGE scan with start
 	if field == KeyKW && key != nil {
+		if string(key) == "" {
+			// key > '' or key >= '' means full scan
+			return &ScanType{FULL, nil}
+		}
 		return &ScanType{RANGE, [][]byte{key, nil}}
 	}
 
@@ -150,6 +154,10 @@ func (o *FilterOptimizer) optimizeLtLteExpr(e *BinaryOpExpr) *ScanType {
 	// Is Key start vale and value can calculate in query,
 	// return RANGE scan with end
 	if field == KeyKW && key != nil {
+		if string(key) == "" {
+			// key < '' or key <= '' means no keys should be scan
+			return &ScanType{EMPTY, nil}
+		}
 		return &ScanType{RANGE, [][]byte{nil, key}}
 	}
 
