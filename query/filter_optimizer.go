@@ -305,7 +305,7 @@ func (o *FilterOptimizer) optimizeOrExpr(e *BinaryOpExpr) *ScanType {
 		}
 		return rstype
 	}
-	if rstype.scanTp == MGET && rstype.scanTp == PREFIX {
+	if rstype.scanTp == MGET && lstype.scanTp == PREFIX {
 		// Process MGET | PREFIX, it may use PREFIX or FULL
 		return o.unionMgetAndPrefix(rstype, lstype)
 	}
