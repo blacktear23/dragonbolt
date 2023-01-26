@@ -242,39 +242,37 @@ func (o *FilterOptimizer) optimizeAndExpr(e *BinaryOpExpr) *ScanType {
 		return lstype
 	}
 
-	// just return lower priority of scan type operation
+	var (
+		lptype *ScanType
+		hptype *ScanType
+	)
+
 	if lstype.scanTp < rstype.scanTp {
-		if lstype.scanTp == MGET && rstype.scanTp == PREFIX {
-			// Process MGET & PREFIX, it may use MGET or EMPTY
-			return o.intersectionMgetAndPrefix(lstype, rstype)
-		}
-		if rstype.scanTp == RANGE {
-			switch lstype.scanTp {
-			case MGET:
-				// Process MGET & RANGE, it may use MGET or EMPTY
-				return o.intersectionMgetAndRange(lstype, rstype)
-			case PREFIX:
-				// Process PREFIX & RANGE, it may use PREFIX, RANGE, EMPTY or FULL
-				return o.intersectionPrefixAndRange(lstype, rstype)
-			}
-		}
-		return lstype
+		lptype = lstype
+		hptype = rstype
+	} else {
+		lptype = rstype
+		hptype = lstype
 	}
-	if rstype.scanTp == MGET && lstype.scanTp == PREFIX {
+
+	if lptype.scanTp == MGET && hptype.scanTp == PREFIX {
 		// Process MGET & PREFIX, it may use MGET or EMPTY
-		return o.intersectionMgetAndPrefix(rstype, lstype)
+		return o.intersectionMgetAndPrefix(lptype, hptype)
 	}
-	if lstype.scanTp == RANGE {
-		switch rstype.scanTp {
+
+	if hptype.scanTp == RANGE {
+		switch lptype.scanTp {
 		case MGET:
 			// Process MGET & RANGE, it may use MGET or EMPTY
-			return o.intersectionMgetAndRange(rstype, lstype)
+			return o.intersectionMgetAndRange(lptype, hptype)
 		case PREFIX:
 			// Process PREFIX & RANGE, it may use PREFIX, RANGE, EMPTY or FULL
-			return o.intersectionPrefixAndRange(rstype, lstype)
+			return o.intersectionPrefixAndRange(lptype, hptype)
 		}
 	}
-	return rstype
+
+	// just return lower priority of scan type operation
+	return lptype
 }
 
 func (o *FilterOptimizer) optimizeOrExpr(e *BinaryOpExpr) *ScanType {
@@ -295,39 +293,36 @@ func (o *FilterOptimizer) optimizeOrExpr(e *BinaryOpExpr) *ScanType {
 		return lstype
 	}
 
-	// just return higher priority scan type operation
+	var (
+		lptype *ScanType
+		hptype *ScanType
+	)
+
 	if lstype.scanTp < rstype.scanTp {
-		if lstype.scanTp == MGET && rstype.scanTp == PREFIX {
-			// Process MGET | PREFIX, it may use PREFIX or FULL
-			return o.unionMgetAndPrefix(lstype, rstype)
-		}
-		if rstype.scanTp == RANGE {
-			switch lstype.scanTp {
-			case MGET:
-				// Process MGET | RANGE, it may use RANGE or FULL
-				return o.unionMgetAndRange(lstype, rstype)
-			case PREFIX:
-				// Process PREFIX | RANGE, it may use PREFIX, RANGE or FULL
-				return o.unionPrefixAndRange(lstype, rstype)
-			}
-		}
-		return rstype
+		lptype = lstype
+		hptype = rstype
+	} else {
+		lptype = rstype
+		hptype = lstype
 	}
-	if rstype.scanTp == MGET && lstype.scanTp == PREFIX {
+
+	if lptype.scanTp == MGET && hptype.scanTp == PREFIX {
 		// Process MGET | PREFIX, it may use PREFIX or FULL
-		return o.unionMgetAndPrefix(rstype, lstype)
+		return o.unionMgetAndPrefix(lptype, hptype)
 	}
-	if lstype.scanTp == RANGE {
-		switch rstype.scanTp {
+	if hptype.scanTp == RANGE {
+		switch lptype.scanTp {
 		case MGET:
 			// Process MGET | RANGE, it may use RANGE or FULL
-			return o.unionMgetAndRange(rstype, lstype)
+			return o.unionMgetAndRange(lptype, hptype)
 		case PREFIX:
 			// Process PREFIX | RANGE, it may use PREFIX, RANGE or FULL
-			return o.unionPrefixAndRange(rstype, lstype)
+			return o.unionPrefixAndRange(lptype, hptype)
 		}
 	}
-	return lstype
+
+	// just return higher priority scan type operation
+	return hptype
 }
 
 func (o *FilterOptimizer) intersectionMgetAndPrefix(mget, prefix *ScanType) *ScanType {

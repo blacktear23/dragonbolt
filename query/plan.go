@@ -5,6 +5,7 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/blacktear23/dragonbolt/txn"
@@ -172,6 +173,7 @@ type MultiGetPlan struct {
 }
 
 func NewMultiGetPlan(t txn.Txn, f *FilterExec, keys []string) Plan {
+	sort.Strings(keys)
 	return &MultiGetPlan{
 		Txn:     t,
 		Filter:  f,
