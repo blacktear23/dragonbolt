@@ -114,7 +114,7 @@ func (e *BinaryOpExpr) checkWithCompares() error {
 	}
 	switch e.Op {
 	case Gt, Gte, Lt, Lte:
-		if ltype != TNUMBER {
+		if ltype != TNUMBER && ltype != TSTR {
 			return fmt.Errorf("Syntax Error: %s operator has wrong type of left expression", op)
 		}
 	case PrefixMatch, RegExpMatch:

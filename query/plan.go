@@ -20,6 +20,7 @@ type Plan interface {
 var (
 	_ Plan = (*FullScanPlan)(nil)
 	_ Plan = (*EmptyResultPlan)(nil)
+	_ Plan = (*RangeScanPlan)(nil)
 	_ Plan = (*PrefixScanPlan)(nil)
 	_ Plan = (*MultiGetPlan)(nil)
 	_ Plan = (*LimitPlan)(nil)
@@ -136,9 +137,13 @@ func (p *PrefixScanPlan) Next() ([]byte, []byte, error) {
 		if key == nil {
 			break
 		}
+
+		// Key not have the prefix
 		if !bytes.HasPrefix(key, pb) {
 			break
 		}
+
+		// Filter with the expression
 		ok, err := p.Filter.Filter(NewKVP(key, val))
 		if err != nil {
 			return nil, nil, err
@@ -557,4 +562,77 @@ func (p *OrderPlan) Explain() []string {
 		ret = append(ret, plan)
 	}
 	return ret
+}
+
+type RangeScanPlan struct {
+	Txn    txn.Txn
+	Filter *FilterExec
+	Start  []byte
+	End    []byte
+	iter   txn.Cursor
+}
+
+func NewRangeScanPlan(t txn.Txn, f *FilterExec, start []byte, end []byte) Plan {
+	return &RangeScanPlan{
+		Txn:    t,
+		Filter: f,
+		Start:  start,
+		End:    end,
+	}
+}
+
+func (p *RangeScanPlan) Init() (err error) {
+	p.iter, err = p.Txn.Cursor()
+	if err != nil {
+		return err
+	}
+	if p.Start != nil {
+		err = p.iter.Seek(p.Start)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *RangeScanPlan) Next() ([]byte, []byte, error) {
+	for {
+		key, val, err := p.iter.Next()
+		if err != nil {
+			return nil, nil, err
+		}
+		if key == nil {
+			break
+		}
+
+		// Key is greater than End
+		if p.End != nil && bytes.Compare(key, p.End) > 0 {
+			break
+		}
+
+		// Filter with the expression
+		ok, err := p.Filter.Filter(NewKVP(key, val))
+		if err != nil {
+			return nil, nil, err
+		}
+		if ok {
+			return key, val, nil
+		}
+	}
+	return nil, nil, nil
+}
+
+func convertByteToString(val []byte) string {
+	if val == nil {
+		return "<nil>"
+	}
+	return string(val)
+}
+
+func (p *RangeScanPlan) String() string {
+	return fmt.Sprintf("RangeScanPlan{Start = '%s', End = '%s', Filter = '%s'}", convertByteToString(p.Start), convertByteToString(p.End), p.Filter.Explain())
+}
+
+func (p *RangeScanPlan) Explain() []string {
+	return []string{p.String()}
 }

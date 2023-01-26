@@ -82,6 +82,7 @@ func (e *FieldExpr) Execute(kv KVPair) (any, error) {
 }
 
 func (e *BinaryOpExpr) Execute(kv KVPair) (any, error) {
+	leftTp := e.Left.ReturnType()
 	switch e.Op {
 	case Eq:
 		return e.execEqual(kv)
@@ -104,13 +105,33 @@ func (e *BinaryOpExpr) Execute(kv KVPair) (any, error) {
 	case Div:
 		return e.execMath(kv, '/')
 	case Gt:
-		return e.execNumberCompare(kv, ">")
+		switch leftTp {
+		case TSTR:
+			return e.execStringCompare(kv, ">")
+		default:
+			return e.execNumberCompare(kv, ">")
+		}
 	case Gte:
-		return e.execNumberCompare(kv, ">=")
+		switch leftTp {
+		case TSTR:
+			return e.execStringCompare(kv, ">=")
+		default:
+			return e.execNumberCompare(kv, ">=")
+		}
 	case Lt:
-		return e.execNumberCompare(kv, "<")
+		switch leftTp {
+		case TSTR:
+			return e.execStringCompare(kv, "<")
+		default:
+			return e.execNumberCompare(kv, "<")
+		}
 	case Lte:
-		return e.execNumberCompare(kv, "<=")
+		switch leftTp {
+		case TSTR:
+			return e.execStringCompare(kv, "<=")
+		default:
+			return e.execNumberCompare(kv, "<=")
+		}
 	}
 	return nil, errors.New("Unknown operator")
 }
@@ -261,6 +282,18 @@ func (e *BinaryOpExpr) execNumberCompare(kv KVPair, op string) (any, error) {
 		return false, err
 	}
 	return execNumberCompare(left, right, op)
+}
+
+func (e *BinaryOpExpr) execStringCompare(kv KVPair, op string) (any, error) {
+	left, err := e.Left.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	right, err := e.Right.Execute(kv)
+	if err != nil {
+		return false, err
+	}
+	return execStringCompare(left, right, op)
 }
 
 func (e *NotExpr) Execute(kv KVPair) (any, error) {

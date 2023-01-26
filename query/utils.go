@@ -1,6 +1,9 @@
 package query
 
-import "errors"
+import (
+	"bytes"
+	"errors"
+)
 
 func BuildExecutor(query string) (*SelectStmt, *FilterExec, error) {
 	p := NewParser(query)
@@ -160,4 +163,26 @@ func execNumberCompare(left any, right any, op string) (bool, error) {
 		return lfloat <= rfloat, nil
 	}
 	return false, errors.New("Unknown operator")
+}
+
+func execStringCompare(left any, right any, op string) (bool, error) {
+	lstr, lsok := convertToByteArray(left)
+	rstr, rsok := convertToByteArray(right)
+	if lsok && rsok {
+		cmpret := bytes.Compare(lstr, rstr)
+		switch op {
+		case ">":
+			return cmpret > 0, nil
+		case ">=":
+			return cmpret >= 0, nil
+		case "<":
+			return cmpret < 0, nil
+		case "<=":
+			return cmpret <= 0, nil
+		default:
+			return false, errors.New("Unknown operator")
+		}
+	}
+
+	return false, errors.New("Invalid operator left or right parameter type")
 }
