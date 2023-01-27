@@ -655,31 +655,30 @@ func (o *FilterOptimizer) intersectionPrefixAndRange(prefix, srange *ScanType) *
 		return &ScanType{FULL, nil}
 	}
 	pstart := prefix.keys[0]
-	pend := append(pstart, 0xFF)
 	rstart, rend := srange.keys[0], srange.keys[1]
 
-	if inRange(rstart, rend, pstart, false) && !inRange(rstart, rend, pend, true) {
-		// | RS | PS | RE | PE |
-		// make sure the result is correct just use PREFIX scan
-		return prefix
-	} else if inRange(pstart, pend, rstart, false) && !inRange(pstart, pend, rend, true) {
-		// | PS | RS | PE | RE |
-		// make sure the result is correct just use PREFIX scan
-		return prefix
-	} else if inRange(rstart, rend, pstart, false) && inRange(rstart, rend, pend, true) {
-		// | RS | PS | PE | RE |
-		// Just use PREFIX scan
-		return prefix
-	} else if inRange(pstart, pend, rstart, false) && inRange(pstart, pend, rend, true) {
-		// | PS | RS | RE | PE |
-		// Just use RANGE scan
-		return srange
-	} else if !inRange(rstart, rend, pstart, false) && !inRange(rstart, rend, pend, true) {
-		// | PS | PE | RS | RE |
-		// | RS | RE | PS | PE |
-		// Just use EMPTY scan
-		return &ScanType{EMPTY, nil}
+	if inRange(rstart, rend, pstart, false) {
+		// | RS | PS | RE | ...
+		if bytes.HasPrefix(rend, pstart) {
+			// | RS | PS | RE | PE |
+			return &ScanType{RANGE, [][]byte{pstart, rend}}
+		} else {
+			// | RS | PS | PE | RE |
+			return prefix
+		}
+	} else {
+		// Not in range
+		if rstart != nil && bytes.HasPrefix(rstart, pstart) {
+			// | PS | RS | PE | RE |
+			// | PS | RS | PE | RE$ |
+			// | PS | RS | RE | PE |
+			return srange
+		} else if rend != nil && bytes.Compare(rend, pstart) < 0 {
+			// | RS | RE | PS | ...
+			return &ScanType{EMPTY, nil}
+		}
 	}
+
 	// If we get there cannot find out which scan type is better just use FULL
 	// scan to make sure the correctness
 	return &ScanType{FULL, nil}
@@ -721,18 +720,39 @@ func (o *FilterOptimizer) unionPrefixAndRange(prefix, srange *ScanType) *ScanTyp
 	}
 
 	pstart := prefix.keys[0]
-	pend := append(pstart, 0xFF)
 	rstart, rend := srange.keys[0], srange.keys[1]
 
-	if inRange(pstart, pend, rstart, false) && inRange(pstart, pend, rend, true) {
-		// | PS | RS | RE | PE |
-		// Just use PREFIX scan
-		return prefix
-	} else if inRange(rstart, rend, pstart, false) && inRange(rstart, rend, pend, true) {
-		// | RS | PS | PE | RE |
-		// Just use RANGE scan
-		return srange
+	if inRange(rstart, rend, pstart, false) {
+		// | RS | PS | RE |
+		if rend != nil && bytes.HasPrefix(rend, pstart) {
+			// | RS | PS | RE | PE
+			// just use RANGE scan from range start to end
+			return &ScanType{RANGE, [][]byte{rstart, nil}}
+		} else if rend == nil {
+			// | RS | PS | PE | RE$ |
+			return srange
+		} else if rend != nil && !bytes.HasPrefix(rend, pstart) {
+			// | RS | PS | PE | RE |
+			return srange
+		}
+	} else {
+		// Not in range
+		if rstart != nil && !bytes.HasPrefix(rstart, pstart) {
+			// | PS | PE | RS | RE |
+			return &ScanType{RANGE, [][]byte{pstart, rend}}
+		} else if rstart != nil && rend != nil && bytes.HasPrefix(rstart, pstart) && !bytes.HasPrefix(rend, pstart) {
+			// | PS | RS | PE | RE |
+			return &ScanType{RANGE, [][]byte{pstart, rend}}
+		} else if rstart != nil && rend != nil && bytes.HasPrefix(rstart, pstart) && bytes.HasPrefix(rend, pstart) {
+			// | PS | RS | RE | PE |
+			return prefix
+		} else if rend != nil && bytes.Compare(rend, pstart) < 0 {
+			// | RS | RE | PS | PE |
+			// just scan RS -> nil
+			return &ScanType{RANGE, [][]byte{rstart, nil}}
+		}
 	}
+
 	// If we get there we cannot find out which scan type is better just use FULL
 	// scan to make sure the correctness
 	return &ScanType{FULL, nil}
