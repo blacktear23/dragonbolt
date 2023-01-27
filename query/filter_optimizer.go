@@ -31,6 +31,35 @@ type FilterOptimizer struct {
 	txn    txn.Txn
 }
 
+func (st *ScanType) String() string {
+	skeys := make([]string, len(st.keys))
+	for i, k := range st.keys {
+		if k == nil {
+			skeys[i] = "<nil>"
+		} else {
+			skeys[i] = string(k)
+		}
+	}
+	stp := ScanTypeToString(st.scanTp)
+	return fmt.Sprintf("ScanType{ Type: %s, Keys: %v }", stp, skeys)
+}
+
+func ScanTypeToString(tp byte) string {
+	switch tp {
+	case EMPTY:
+		return "EMPTY"
+	case MGET:
+		return "MGET"
+	case PREFIX:
+		return "PREFIX"
+	case RANGE:
+		return "RANGE"
+	case FULL:
+		return "FULL"
+	}
+	return "UNKNOWN"
+}
+
 func NewFilterOptimizer(ast *WhereStmt, t txn.Txn, filter *FilterExec) *FilterOptimizer {
 	return &FilterOptimizer{
 		expr:   ast.Expr,
@@ -661,6 +690,9 @@ func (o *FilterOptimizer) intersectionPrefixAndRange(prefix, srange *ScanType) *
 		// | RS | PS | RE | ...
 		if bytes.HasPrefix(rend, pstart) {
 			// | RS | PS | RE | PE |
+			if bytes.Equal(pstart, rend) {
+				return &ScanType{MGET, [][]byte{pstart}}
+			}
 			return &ScanType{RANGE, [][]byte{pstart, rend}}
 		} else {
 			// | RS | PS | PE | RE |
@@ -675,6 +707,9 @@ func (o *FilterOptimizer) intersectionPrefixAndRange(prefix, srange *ScanType) *
 			return srange
 		} else if rend != nil && bytes.Compare(rend, pstart) < 0 {
 			// | RS | RE | PS | ...
+			return &ScanType{EMPTY, nil}
+		} else if rstart != nil && bytes.Compare(pstart, rstart) < 0 {
+			// | PS | PE | RS | RE |
 			return &ScanType{EMPTY, nil}
 		}
 	}
@@ -702,6 +737,16 @@ func (o *FilterOptimizer) unionMgetAndRange(mget, srange *ScanType) *ScanType {
 
 	// If there has one mget key not in the range just use full scan
 	if haveRangeNotMatch {
+		if len(mget.keys) == 1 {
+			mkey := mget.keys[0]
+			if rstart != nil && bytes.Compare(mkey, rstart) < 0 {
+				// | MK | RS | RE |
+				return &ScanType{RANGE, [][]byte{mkey, rend}}
+			} else if rend != nil && bytes.Compare(rend, mkey) < 0 {
+				// | RS | RE | MK |
+				return &ScanType{RANGE, [][]byte{rstart, mkey}}
+			}
+		}
 		return &ScanType{FULL, nil}
 	}
 
@@ -737,11 +782,17 @@ func (o *FilterOptimizer) unionPrefixAndRange(prefix, srange *ScanType) *ScanTyp
 		}
 	} else {
 		// Not in range
-		if rstart != nil && !bytes.HasPrefix(rstart, pstart) {
+		if rstart != nil && bytes.Compare(pstart, rstart) < 0 && !bytes.HasPrefix(rstart, pstart) {
 			// | PS | PE | RS | RE |
+			if bytes.Equal(pstart, rend) {
+				return &ScanType{MGET, [][]byte{pstart}}
+			}
 			return &ScanType{RANGE, [][]byte{pstart, rend}}
 		} else if rstart != nil && rend != nil && bytes.HasPrefix(rstart, pstart) && !bytes.HasPrefix(rend, pstart) {
 			// | PS | RS | PE | RE |
+			if bytes.Equal(pstart, rend) {
+				return &ScanType{MGET, [][]byte{pstart}}
+			}
 			return &ScanType{RANGE, [][]byte{pstart, rend}}
 		} else if rstart != nil && rend != nil && bytes.HasPrefix(rstart, pstart) && bytes.HasPrefix(rend, pstart) {
 			// | PS | RS | RE | PE |
