@@ -1,8 +1,11 @@
 package server
 
 import (
+	"fmt"
+
 	"github.com/blacktear23/dragonbolt/protocol"
 	"github.com/blacktear23/dragonbolt/query"
+	"github.com/c4pt0r/kvql"
 )
 
 func (c *rclient) handleQuery(args []protocol.Encodable) protocol.Encodable {
@@ -35,24 +38,49 @@ func (c *rclient) handleQuery(args []protocol.Encodable) protocol.Encodable {
 	return ret
 }
 
+func convertToBytes(val any) []byte {
+	switch v := val.(type) {
+	case string:
+		return []byte(v)
+	case []byte:
+		return v
+	case int, int8, int16, int32, int64,
+		uint, uint16, uint32, uint64:
+		return []byte(fmt.Sprintf("%v", v))
+	case byte:
+		return []byte{v}
+	case bool:
+		if v {
+			return []byte("true")
+		} else {
+			return []byte("false")
+		}
+	default:
+		return []byte(fmt.Sprintf("%v", v))
+	}
+}
+
 func (c *rclient) processQuery(queryStr string) (protocol.Encodable, error) {
-	optimizer := query.NewOptimizer(queryStr)
-	plan, err := optimizer.BuildPlan(c.txn)
+	optimizer := kvql.NewOptimizer(queryStr)
+	store := query.NewTxnStore(c.txn)
+	plan, err := optimizer.BuildPlan(store)
 	if err != nil {
 		return nil, err
 	}
 	ret := protocol.Array{}
+	execCtx := kvql.NewExecuteCtx()
 	for {
-		cols, err := plan.Next()
+		cols, err := plan.Next(execCtx)
 		if err != nil {
 			return nil, err
 		}
 		if cols == nil {
 			break
 		}
+		execCtx.Clear()
 		fields := make([]protocol.Encodable, len(cols))
 		for i := 0; i < len(cols); i++ {
-			fields[i] = protocol.NewBlobString(cols[i])
+			fields[i] = protocol.NewBlobString(convertToBytes(cols[i]))
 		}
 		ret = append(ret, protocol.Array(fields))
 	}
@@ -90,8 +118,9 @@ func (c *rclient) handleExplain(args []protocol.Encodable) protocol.Encodable {
 }
 
 func (c *rclient) processExplain(queryStr string) (protocol.Encodable, error) {
-	optimizer := query.NewOptimizer(queryStr)
-	plan, err := optimizer.BuildPlan(c.txn)
+	optimizer := kvql.NewOptimizer(queryStr)
+	store := query.NewTxnStore(c.txn)
+	plan, err := optimizer.BuildPlan(store)
 	if err != nil {
 		return nil, err
 	}

@@ -1,9 +1,12 @@
 module github.com/blacktear23/dragonbolt
 
-go 1.18
+go 1.21.1
+
+toolchain go1.22.2
 
 require (
 	github.com/blacktear23/bolt v1.4.0
+	github.com/c4pt0r/kvql v0.0.0-20240509061143-2e732b17190f
 	github.com/igrmk/treemap/v2 v2.0.1
 	github.com/lni/dragonboat/v4 v4.0.0-20220724134658-ed44d312daa2
 	github.com/lni/goutils v1.3.1-0.20220604063047-388d67b4dbc4
@@ -15,6 +18,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/VictoriaMetrics/metrics v1.18.1 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
+	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/cockroachdb/errors v1.9.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20211118104740-dabe8e521a4f // indirect
