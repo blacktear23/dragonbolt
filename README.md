@@ -92,77 +92,7 @@ RR 和 RC 隔离级别的差异只在于事务开始时，读快照的版本号�
 
 # 查询 `query`
 
-Dragonbolt 支持通过类似 SQL 的表达式过滤 Key Value 数据。语法：
-
-```
-query "[select (* | Fields)] where [WhereCondition] [order by OrderByParams] [limit LimitParams]"
-
-Fields := (Field | FunctionCall | String | Expr) { "," (Field | FunctionCall | String | Expr) }
-
-WhereCondition := Expr {LogicOp Expr}
-
-String := '"' Chars '"'
-
-Boolean := ("true" | "false")
-
-LogicOp := "|" | "&"
-
-NotOp := "!"
-
-Field := "key" | "value"
-
-BinaryOp := "=" | "!=" | "^=" | "~=" | ">" | ">=" | "<" | "<=" |
-            "+" | "-" | "*" | "/"
-
-FuncName := Chars
-
-FuncArg := (Field | Number | String | Expr)
-
-FunctionCall := FuncName "(" FuncArg { "," FuncArg } ")"
-
-OpParam := (Field | String | FunctionCall | Number | Boolean)
-
-Expr := [NotOp] OpParam BinaryOp OpParam |
-        "(" [NotOp] OpParam BinaryOp OpParam ")"
-
-LimitParams := (Number | Number "," Number)
-
-OrderByParams := OrderByField { "," OrderByField }
-
-OrderByField := (Field | Expr) [("asc" | "desc")]
-```
-
-运算符：
-
-* `|`: 逻辑或 
-* `&`: 逻辑与
-* `=`: 相等
-* `!=`: 不等于
-* `^=`: 前缀匹配
-* `~=`: 正则表达式匹配
-*  `>`: 大于
-*  `<`: 小于
-*  `>=`: 大于等于
-*  `<=`: 小于等于
-*  `+`: 加法
-*  `-`: 减法
-*  `*`: 乘法
-*  `/`: 除法
-
-字段：
-
-* `key`: 表示 Key
-* `value`: 表示 Value
-
-函数：
-
-* `int(val)`: 转换为数字
-* `float(val)`: 转换为浮点数
-* `str(val)`: 转换为字符串
-* `upper(val)`: 转换成大写字母
-* `lower(val)`: 转换成小写字母
-*  `is_int(val)`: 返回值是否为数字
-*  `is_float(val)`: 返回值是否为浮点数
+Dragonbolt 支持通过使用 [https://github.com/c4pt0r/kvql](https://github.com/c4pt0r/kvql) 支持类似SQL的查询语句。
 
 例子：
 
@@ -180,36 +110,5 @@ OrderByField := (Field | Expr) [("asc" | "desc")]
 > query "select * where key ^= 'k' order by key desc, value asc limit 10"
 > query "select * where is_int(value) order by key limit 10"
 > query "select * where key > 'k' & key < 'v'"
+> query "put ('k1', 'v1'), ('k2', 'v2')"
 ```
-
-## 关于查询计划
-
-**查询计划中支持的算子有：**
-
-* ProjectionPlan: 投影算子，计算 select 子句后面各个字段的表达式
-* LimitPlan: 集合大小限制算子，按照 limit 子句后面的数值跳过指定行数，并返回指定行数
-* OrderPlan: 排序算子，对扫描的结果进行排序
-* EmptyResultPlan: 空集合算子，返回空集合
-* PrefixScanPlan: 前缀扫描算子，扫描指定的前缀
-* RangeScanPlan: 区间扫描算子，扫描指定的区间
-* MultiGetPlan: 批量Get算子，只取指定的`key`的集合
-* FullScanPlan: 全量扫描算子，扫描所有的`key`
-
-**执行计划树：**
-
-优化器会根据查询语句和最终优化结果构建执行计划树，每个执行计划会以 `ProjectionPlan` 为根节点，最终叶子节点为扫描类算子。例如：
-
-```
-ProjectionPlan
-  \- LimitPlan
-    \- OrderPlan
-      \- PrefixScanPlan
-```
-
-其中 `LimitPlan` 和 `OrderPlan` 会根据查询语句中是否有 `limit` 或 `order by` 子句进行增减。
-
-**优化器目前会做3种优化：**
-
-1. 根据 `where` 子句后面的表达式选择最优的扫描算子。
-2. 根据 `order by` 子句后面的排序列顺序做排序算子擦除。主要针对的是 `order by key asc` 条件做排序算子的擦除。
-3. 如果 `where` 计算出来的算子是 `EmptyResultPlan` 则忽略 `limit` 和 `order by` 子句的算子
