@@ -2,11 +2,21 @@ package server
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/blacktear23/dragonbolt/protocol"
 	"github.com/blacktear23/dragonbolt/query"
 	"github.com/c4pt0r/kvql"
 )
+
+func multiLineErrorf(format string, args ...any) protocol.Array {
+	msg := fmt.Sprintf(format, args...)
+	ret := make([]protocol.Encodable, 0, 3)
+	for _, line := range strings.Split(msg, "\n") {
+		ret = append(ret, protocol.NewSimpleError(line))
+	}
+	return ret
+}
 
 func (c *rclient) handleQuery(args []protocol.Encodable) protocol.Encodable {
 	if len(args) < 1 {
@@ -26,6 +36,11 @@ func (c *rclient) handleQuery(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		if autoCommit {
 			c.autoRollback()
+		}
+		if qerr, ok := err.(kvql.QueryBinder); ok {
+			qerr.BindQuery(query)
+			qerr.SetPadding(0)
+			return multiLineErrorf(err.Error())
 		}
 		return protocol.NewSimpleErrorf("Internal error: %v", err)
 	}
@@ -105,6 +120,11 @@ func (c *rclient) handleExplain(args []protocol.Encodable) protocol.Encodable {
 	if err != nil {
 		if autoCommit {
 			c.autoRollback()
+		}
+		if qerr, ok := err.(kvql.QueryBinder); ok {
+			qerr.BindQuery(query)
+			qerr.SetPadding(0)
+			return multiLineErrorf(err.Error())
 		}
 		return protocol.NewSimpleErrorf("Internal error: %v", err)
 	}
